@@ -3,8 +3,25 @@ using UnityEngine.Rendering;
 
 public class CameraRenderer
 {
+    private const int MaxPointLights = 4;
+
     private ScriptableRenderContext context;
     private Camera camera;
+    private readonly Vector4[] pointLightPositions = new Vector4[MaxPointLights];
+    private readonly Vector4[] pointLightColors = new Vector4[MaxPointLights];
+
+    private static readonly int MainLightDirectionId =
+        Shader.PropertyToID("_B0XMainLightDirection");
+    private static readonly int MainLightColorId =
+        Shader.PropertyToID("_B0XMainLightColor");
+    private static readonly int AmbientColorId =
+        Shader.PropertyToID("_B0XAmbientColor");
+    private static readonly int PointLightPositionsId =
+        Shader.PropertyToID("_B0XPointLightPositions");
+    private static readonly int PointLightColorsId =
+        Shader.PropertyToID("_B0XPointLightColors");
+    private static readonly int PointLightCountId =
+        Shader.PropertyToID("_B0XPointLightCount");
 
     private static readonly ShaderTagId[] ShaderTagIds =
     {
@@ -33,6 +50,8 @@ public class CameraRenderer
 
         Clear();
 
+        SetupLighting(cullingResults);
+
         DrawRenderers(
             cullingResults,
             RenderQueueRange.opaque,
@@ -51,6 +70,65 @@ public class CameraRenderer
         );
 
         context.Submit();
+    }
+
+    private void SetupLighting(CullingResults cullingResults)
+    {
+        Vector4 mainLightDirection = new Vector4(0f, 1f, 0f, 0f);
+        Color mainLightColor = Color.black;
+        bool foundMainLight = false;
+        int pointLightCount = 0;
+
+        for (int i = 0; i < MaxPointLights; i++)
+        {
+            pointLightPositions[i] = Vector4.zero;
+            pointLightColors[i] = Vector4.zero;
+        }
+
+        var visibleLights = cullingResults.visibleLights;
+        for (int i = 0; i < visibleLights.Length; i++)
+        {
+            VisibleLight visibleLight = visibleLights[i];
+            if (visibleLight.lightType != LightType.Directional)
+            {
+                if (visibleLight.lightType == LightType.Point &&
+                    pointLightCount < MaxPointLights)
+                {
+                    Vector4 position = visibleLight.localToWorldMatrix.GetColumn(3);
+                    pointLightPositions[pointLightCount] = new Vector4(
+                        position.x,
+                        position.y,
+                        position.z,
+                        visibleLight.range
+                    );
+                    pointLightColors[pointLightCount] = visibleLight.finalColor;
+                    pointLightCount++;
+                }
+                continue;
+            }
+
+            Vector4 forward = visibleLight.localToWorldMatrix.GetColumn(2);
+            mainLightDirection = new Vector4(-forward.x, -forward.y, -forward.z, 0f);
+            mainLightColor = visibleLight.finalColor;
+            foundMainLight = true;
+            break;
+        }
+
+        if (!foundMainLight)
+        {
+            mainLightColor = Color.black;
+        }
+
+        Color ambientColor = RenderSettings.ambientLight * RenderSettings.ambientIntensity;
+        CommandBuffer commandBuffer = CommandBufferPool.Get("B0X-SRP Lighting");
+        commandBuffer.SetGlobalVector(MainLightDirectionId, mainLightDirection);
+        commandBuffer.SetGlobalVector(MainLightColorId, mainLightColor);
+        commandBuffer.SetGlobalVector(AmbientColorId, ambientColor);
+        commandBuffer.SetGlobalVectorArray(PointLightPositionsId, pointLightPositions);
+        commandBuffer.SetGlobalVectorArray(PointLightColorsId, pointLightColors);
+        commandBuffer.SetGlobalInt(PointLightCountId, pointLightCount);
+        context.ExecuteCommandBuffer(commandBuffer);
+        CommandBufferPool.Release(commandBuffer);
     }
 
     private void Clear()
