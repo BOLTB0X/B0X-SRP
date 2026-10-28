@@ -7,8 +7,13 @@ using UnityEngine.Rendering;
 )]
 public class B0XRenderPipelineAsset : RenderPipelineAsset
 {
+    [SerializeField]
+    bool useGPUInstancing = true;
+	[SerializeField]
+	bool useSRPBatcher = true;
+
     protected override RenderPipeline CreatePipeline()
     {
-        return new B0XRenderPipeline();
+        return new B0XRenderPipeline(useGPUInstancing, useSRPBatcher);
     }
 }

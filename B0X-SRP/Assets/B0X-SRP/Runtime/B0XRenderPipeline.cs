@@ -6,13 +6,21 @@ public class B0XRenderPipeline : RenderPipeline
 {
     private CameraRenderer renderer = new CameraRenderer();
 
-    protected override void Render(
-        ScriptableRenderContext context,
-        List<Camera> cameras)
+    readonly bool useGPUInstancing;
+
+    public B0XRenderPipeline (bool useGPUInstancing, bool useSRPBatcher)
     {
-        foreach (Camera camera in cameras)
-        {
-            renderer.Render(context, camera);
-        }
+        this.useGPUInstancing = useGPUInstancing;
+        GraphicsSettings.useScriptableRenderPipelineBatching = useSRPBatcher;
+        GraphicsSettings.lightsUseLinearIntensity = true;
+    }
+
+    protected override void Render (
+		ScriptableRenderContext context, List<Camera> cameras
+	)
+    {
+        for (int i = 0; i < cameras.Count; i++) {
+			renderer.Render(context, cameras[i], useGPUInstancing);
+		}
     }
 }

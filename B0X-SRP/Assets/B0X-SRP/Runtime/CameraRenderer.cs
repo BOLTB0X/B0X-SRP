@@ -1,188 +1,184 @@
 using UnityEngine;
 using UnityEngine.Rendering;
+using UnityEngine.Profiling;
 
-public class CameraRenderer
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+public partial class CameraRenderer
 {
-    private const int MaxPointLights = 4;
-
-    private ScriptableRenderContext context;
-    private Camera camera;
-    private readonly Vector4[] pointLightPositions = new Vector4[MaxPointLights];
-    private readonly Vector4[] pointLightColors = new Vector4[MaxPointLights];
-
-    private static readonly int MainLightDirectionId =
-        Shader.PropertyToID("_B0XMainLightDirection");
-    private static readonly int MainLightColorId =
-        Shader.PropertyToID("_B0XMainLightColor");
-    private static readonly int AmbientColorId =
-        Shader.PropertyToID("_B0XAmbientColor");
-    private static readonly int PointLightPositionsId =
-        Shader.PropertyToID("_B0XPointLightPositions");
-    private static readonly int PointLightColorsId =
-        Shader.PropertyToID("_B0XPointLightColors");
-    private static readonly int PointLightCountId =
-        Shader.PropertyToID("_B0XPointLightCount");
-
-    private static readonly ShaderTagId[] ShaderTagIds =
-    {
+    const string bufferName = "Render Camera";
+    static readonly ShaderTagId[] shaderTagIds = {
+        new ShaderTagId("CustomTexturedLit"),
         new ShaderTagId("SRPDefaultUnlit"),
         new ShaderTagId("UniversalForward"),
         new ShaderTagId("UniversalForwardOnly")
     };
+    CommandBuffer buffer = new CommandBuffer { name = bufferName };
+    ScriptableRenderContext context;
+    Camera camera;
+    CullingResults cullingResults;
 
-    public void Render(
-        ScriptableRenderContext context,
-        Camera camera)
+    Lighting lighting = new Lighting();
+
+#if UNITY_EDITOR
+    string SampleName { get; set; }
+#else
+    const string SampleName = bufferName;
+#endif
+
+    partial void PrepareBuffer();
+    partial void PrepareForSceneWindow();
+    partial void DrawGizmos();
+    partial void DrawUnsupportedShaders();
+
+    public void Render (ScriptableRenderContext context, Camera camera, bool useGPUInstancing)
     {
         this.context = context;
         this.camera = camera;
 
-        if (!camera.TryGetCullingParameters(
-            out ScriptableCullingParameters cullingParameters))
-        {
+        PrepareBuffer();
+        PrepareForSceneWindow();
+        if (!Cull()) {
             return;
         }
 
-        CullingResults cullingResults =
-            context.Cull(ref cullingParameters);
+        Setup();
+        lighting.Setup(context, cullingResults);
+        DrawVisibleGeometry(useGPUInstancing);
 
-        context.SetupCameraProperties(camera);
+        DrawUnsupportedShaders();
+        DrawGizmos();
+        Submit();
+    }
 
-        Clear();
-
-        SetupLighting(cullingResults);
-
-        DrawRenderers(
-            cullingResults,
-            RenderQueueRange.opaque,
-            SortingCriteria.CommonOpaque
-        );
-
-        if (camera.clearFlags == CameraClearFlags.Skybox)
-        {
-            context.DrawSkybox(camera);
+    bool Cull()
+    {
+        if (camera.TryGetCullingParameters(out ScriptableCullingParameters p)) {
+            cullingResults = context.Cull(ref p);
+            return true;
         }
+        return false;
+    }
 
-        DrawRenderers(
-            cullingResults,
-            RenderQueueRange.transparent,
-            SortingCriteria.CommonTransparent
-        );
+    void Setup()
+    {
+        context.SetupCameraProperties(camera);
+        CameraClearFlags flags = camera.clearFlags;
+        //buffer.ClearRenderTarget(true, true, Color.clear);
+        buffer.ClearRenderTarget(
+			flags <= CameraClearFlags.Depth,
+			flags == CameraClearFlags.Color,
+			flags == CameraClearFlags.Color ?
+				camera.backgroundColor.linear : Color.clear
+		);
+        buffer.BeginSample(SampleName);
+        ExecuteBuffer();
+    }
 
+    void Submit()
+    {
+        buffer.EndSample(SampleName);
+        ExecuteBuffer();
         context.Submit();
     }
 
-    private void SetupLighting(CullingResults cullingResults)
+    void ExecuteBuffer()
     {
-        Vector4 mainLightDirection = new Vector4(0f, 1f, 0f, 0f);
-        Color mainLightColor = Color.black;
-        bool foundMainLight = false;
-        int pointLightCount = 0;
-
-        for (int i = 0; i < MaxPointLights; i++)
-        {
-            pointLightPositions[i] = Vector4.zero;
-            pointLightColors[i] = Vector4.zero;
-        }
-
-        var visibleLights = cullingResults.visibleLights;
-        for (int i = 0; i < visibleLights.Length; i++)
-        {
-            VisibleLight visibleLight = visibleLights[i];
-            if (visibleLight.lightType != LightType.Directional)
-            {
-                if (visibleLight.lightType == LightType.Point &&
-                    pointLightCount < MaxPointLights)
-                {
-                    Vector4 position = visibleLight.localToWorldMatrix.GetColumn(3);
-                    pointLightPositions[pointLightCount] = new Vector4(
-                        position.x,
-                        position.y,
-                        position.z,
-                        visibleLight.range
-                    );
-                    pointLightColors[pointLightCount] = visibleLight.finalColor;
-                    pointLightCount++;
-                }
-                continue;
-            }
-
-            Vector4 forward = visibleLight.localToWorldMatrix.GetColumn(2);
-            mainLightDirection = new Vector4(-forward.x, -forward.y, -forward.z, 0f);
-            mainLightColor = visibleLight.finalColor;
-            foundMainLight = true;
-            break;
-        }
-
-        if (!foundMainLight)
-        {
-            mainLightColor = Color.black;
-        }
-
-        Color ambientColor = RenderSettings.ambientLight * RenderSettings.ambientIntensity;
-        CommandBuffer commandBuffer = CommandBufferPool.Get("B0X-SRP Lighting");
-        commandBuffer.SetGlobalVector(MainLightDirectionId, mainLightDirection);
-        commandBuffer.SetGlobalVector(MainLightColorId, mainLightColor);
-        commandBuffer.SetGlobalVector(AmbientColorId, ambientColor);
-        commandBuffer.SetGlobalVectorArray(PointLightPositionsId, pointLightPositions);
-        commandBuffer.SetGlobalVectorArray(PointLightColorsId, pointLightColors);
-        commandBuffer.SetGlobalInt(PointLightCountId, pointLightCount);
-        context.ExecuteCommandBuffer(commandBuffer);
-        CommandBufferPool.Release(commandBuffer);
+        context.ExecuteCommandBuffer(buffer);
+        buffer.Clear();
     }
 
-    private void Clear()
+    void DrawVisibleGeometry(bool useGPUInstancing)
     {
-        CommandBuffer commandBuffer =
-            CommandBufferPool.Get("B0X-SRP Clear");
+		DrawRendererList(RenderQueueRange.opaque, SortingCriteria.CommonOpaque, useGPUInstancing);
 
-        bool clearColor =
-            camera.clearFlags == CameraClearFlags.Skybox
-            || camera.clearFlags == CameraClearFlags.SolidColor;
+		if (camera.clearFlags == CameraClearFlags.Skybox)
+		{
+			buffer.DrawRendererList(context.CreateSkyboxRendererList(camera));
+			ExecuteBuffer();
+		}
 
-        bool clearDepth =
-            camera.clearFlags != CameraClearFlags.Nothing;
-
-        commandBuffer.ClearRenderTarget(
-            clearDepth,
-            clearColor,
-            camera.backgroundColor
-        );
-
-        context.ExecuteCommandBuffer(commandBuffer);
-
-        CommandBufferPool.Release(commandBuffer);
+		DrawRendererList(RenderQueueRange.transparent, SortingCriteria.CommonTransparent, useGPUInstancing);
     }
 
-    private void DrawRenderers(
-        CullingResults cullingResults,
-        RenderQueueRange renderQueueRange,
-        SortingCriteria sortingCriteria)
-    {
-        DrawingSettings drawingSettings =
-            new DrawingSettings(
-                ShaderTagIds[0],
-                new SortingSettings(camera)
-                {
-                    criteria = sortingCriteria
-                }
-            );
+	void DrawRendererList(RenderQueueRange queueRange, SortingCriteria sortingCriteria, bool useGPUInstancing)
+	{
+		var drawingSettings = new DrawingSettings(
+			shaderTagIds[0], new SortingSettings(camera) { criteria = sortingCriteria }
+		)
+		{
+			enableInstancing = useGPUInstancing
+		};
+		for (int i = 1; i < shaderTagIds.Length; i++)
+		{
+			drawingSettings.SetShaderPassName(i, shaderTagIds[i]);
+		}
 
-        for (int i = 1; i < ShaderTagIds.Length; i++)
-        {
-            drawingSettings.SetShaderPassName(
-                i,
-                ShaderTagIds[i]
-            );
+		var filteringSettings = new FilteringSettings(queueRange, camera.cullingMask);
+		var rendererListParams = new RendererListParams(cullingResults, drawingSettings, filteringSettings);
+		RendererList rendererList = context.CreateRendererList(ref rendererListParams);
+		buffer.DrawRendererList(rendererList);
+		ExecuteBuffer();
+	}
+}
+
+#if UNITY_EDITOR
+public partial class CameraRenderer
+{
+    static ShaderTagId[] legacyShaderTagIds = {
+        new ShaderTagId("Always"),
+        new ShaderTagId("ForwardBase"),
+        new ShaderTagId("PrepassBase"),
+        new ShaderTagId("Vertex"),
+        new ShaderTagId("VertexLMRGBM"),
+        new ShaderTagId("VertexLM")
+    };
+
+    static Material errorMaterial;
+
+    partial void PrepareBuffer ()
+    {
+        Profiler.BeginSample("Editor Only");
+        buffer.name = camera.name;
+        SampleName = camera.name;
+        Profiler.EndSample();
+    }
+
+    partial void PrepareForSceneWindow ()
+    {
+        if (camera.cameraType == CameraType.SceneView) {
+            ScriptableRenderContext.EmitWorldGeometryForSceneView(camera);
+        }
+    }
+
+    partial void DrawUnsupportedShaders()
+    {
+        if (errorMaterial == null) {
+            errorMaterial = new Material(Shader.Find("Hidden/InternalErrorShader"));
+        }
+		var drawingSettings = new DrawingSettings(legacyShaderTagIds[0], new SortingSettings(camera)) {
+            overrideMaterial = errorMaterial
+        };
+
+        for (int i = 1; i < legacyShaderTagIds.Length; i++) {
+            drawingSettings.SetShaderPassName(i, legacyShaderTagIds[i]);
         }
 
-        FilteringSettings filteringSettings =
-            new FilteringSettings(renderQueueRange);
+		var filteringSettings = FilteringSettings.defaultValue;
+		var rendererListParams = new RendererListParams(cullingResults, drawingSettings, filteringSettings);
+		RendererList rendererList = context.CreateRendererList(ref rendererListParams);
+		buffer.DrawRendererList(rendererList);
+		ExecuteBuffer();
+    }
 
-        context.DrawRenderers(
-            cullingResults,
-            ref drawingSettings,
-            ref filteringSettings
-        );
+    partial void DrawGizmos()
+    {
+        if (Handles.ShouldRenderGizmos()) {
+            context.DrawGizmos(camera, GizmoSubset.PreImageEffects);
+            context.DrawGizmos(camera, GizmoSubset.PostImageEffects);
+        }
     }
 }
+#endif
