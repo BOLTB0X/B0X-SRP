@@ -13,11 +13,14 @@ public class Lighting
 		dirLightCountId = Shader.PropertyToID("_DirectionalLightCount"),
 		dirLightColorsId = Shader.PropertyToID("_DirectionalLightColors"),
 		dirLightDirectionsId = Shader.PropertyToID("_DirectionalLightDirections"),
-		ambientColorId = Shader.PropertyToID("_B0XAmbientColor");
+		ambientColorId = Shader.PropertyToID("_B0XAmbientColor"),
+		timeId = Shader.PropertyToID("_B0XTime");
 
 	static Vector4[]
 		dirLightColors = new Vector4[maxDirLightCount],
 		dirLightDirections = new Vector4[maxDirLightCount];
+
+	readonly Shadows shadows = new Shadows();
 
 	CommandBuffer buffer = new CommandBuffer {
 		name = bufferName
@@ -31,21 +34,27 @@ public class Lighting
     {
 		this.cullingResults = cullingResults;
 		buffer.BeginSample(bufferName);
-		SetupLights();
+		SetupLights(context);
 		buffer.EndSample(bufferName);
 		context.ExecuteCommandBuffer(buffer);
 		buffer.Clear();
 	}
 
-	void SetupLights ()
+	public void Cleanup (ScriptableRenderContext context) => shadows.Cleanup(context);
+
+	void SetupLights (ScriptableRenderContext context)
     {
 		NativeArray<VisibleLight> visibleLights = cullingResults.visibleLights;
 		int dirLightCount = 0;
+		int mainDirectionalLightIndex = -1;
+		VisibleLight mainDirectionalLight = default;
 		for (int i = 0; i < visibleLights.Length; i++)
         {
 			VisibleLight visibleLight = visibleLights[i];
 			if (visibleLight.lightType == LightType.Directional)
             {
+				mainDirectionalLightIndex = i;
+				mainDirectionalLight = visibleLight;
 				SetupDirectionalLight(dirLightCount++, ref visibleLight);
 				if (dirLightCount >= maxDirLightCount) break;
 			}
@@ -58,6 +67,13 @@ public class Lighting
 			ambientColorId,
 			RenderSettings.ambientLight * RenderSettings.ambientIntensity
 		);
+		float time = Time.time;
+		buffer.SetGlobalVector(timeId, new Vector4(time * 0.05f, time, time * 2f, time * 3f));
+		context.ExecuteCommandBuffer(buffer);
+		buffer.Clear();
+
+		if (mainDirectionalLightIndex >= 0)
+			shadows.Render(context, cullingResults, mainDirectionalLightIndex, mainDirectionalLight);
 	}
 
 	void SetupDirectionalLight (int index, ref VisibleLight visibleLight)

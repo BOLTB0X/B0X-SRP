@@ -6,6 +6,7 @@
 #include "../ShaderLibrary/Light.hlsl"
 #include "../ShaderLibrary/BRDF.hlsl"
 #include "../ShaderLibrary/Lighting.hlsl"
+#include "../ShaderLibrary/Shadows.hlsl"
 
 TEXTURE2D(_BaseMap);
 SAMPLER(sampler_BaseMap);
@@ -25,11 +26,11 @@ CBUFFER_START(UnityPerMaterial)
     float4 _RoughnessMap_ST;
     float4 _OcclusionMap_ST;
     float4 _BaseColor;
-    float _NormalScale;
-    float _Metallic;
-    float _Smoothness;
-    float _OcclusionStrength;
-    float _Cutoff;
+    float  _NormalScale;
+    float  _Metallic;
+    float  _Smoothness;
+    float  _OcclusionStrength;
+    float  _Cutoff;
 CBUFFER_END
 
 float4 _B0XAmbientColor;
@@ -82,19 +83,24 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
     float2 occlusionUV = TRANSFORM_TEX(input.uv, _OcclusionMap);
 
     float4 baseSample = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, baseUV) * _BaseColor;
+
     #if defined(_CLIPPING)
         clip(baseSample.a - _Cutoff);
     #endif
 
     float3 normalWS = normalize(input.normalWS);
-    float3 tangentWS = normalize(input.tangentWS.xyz);
-    float3 bitangentWS = normalize(cross(normalWS, tangentWS)) * input.tangentWS.w;
-    float3 normalTS = SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, normalUV).xyz * 2.0 - 1.0;
-    normalTS.xy *= _NormalScale;
-    normalTS = normalize(normalTS);
-    normalWS = normalize(
-        tangentWS * normalTS.x + bitangentWS * normalTS.y + normalWS * normalTS.z
-    );
+    float tangentLengthSq = dot(input.tangentWS.xyz, input.tangentWS.xyz);
+    if (tangentLengthSq > 1e-6 && abs(input.tangentWS.w) > 0.5)
+    {
+        float3 tangentWS = input.tangentWS.xyz * rsqrt(tangentLengthSq);
+        float3 bitangentWS = normalize(cross(normalWS, tangentWS)) * input.tangentWS.w;
+        float3 normalTS = SAMPLE_TEXTURE2D(_NormalMap, sampler_NormalMap, normalUV).xyz * 2.0 - 1.0;
+        normalTS.xy *= _NormalScale;
+        normalTS = normalize(normalTS);
+        normalWS = normalize(
+            tangentWS * normalTS.x + bitangentWS * normalTS.y + normalWS * normalTS.z
+        );
+    }
 
     Surface surface;
     surface.normal = normalWS;
@@ -106,6 +112,7 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
     );
     float roughness = saturate(SAMPLE_TEXTURE2D(_RoughnessMap, sampler_RoughnessMap, roughnessUV).r);
     surface.smoothness = saturate((1.0 - roughness) * _Smoothness);
+    surface.shadowAttenuation = GetDirectionalShadowAttenuation(input.positionWS);
 
     BRDF brdf = GetBRDF(surface);
     float3 color = GetLighting(surface, brdf);

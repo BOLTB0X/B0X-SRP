@@ -42,6 +42,24 @@ Shader "Custom/Shaders/TexturedLit"
 			#include "TexturedLitPass.hlsl"
 			ENDHLSL
 		}
+
+		Pass
+		{
+			Name "ShadowCaster"
+			Tags { "LightMode" = "ShadowCaster" }
+			Cull Back
+			ZWrite On
+			ZTest LEqual
+			ColorMask 0
+
+			HLSLPROGRAM
+			#pragma target 3.5
+			#pragma shader_feature _CLIPPING
+			#pragma vertex ShadowCasterVertex
+			#pragma fragment ShadowCasterFragment
+			#include "ShadowCasterPass.hlsl"
+			ENDHLSL
+		}
 	}
 
 	CustomEditor "CustomShaderGUI"

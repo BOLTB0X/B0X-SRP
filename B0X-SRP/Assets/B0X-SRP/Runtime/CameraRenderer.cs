@@ -11,6 +11,7 @@ public partial class CameraRenderer
     const string bufferName = "Render Camera";
     static readonly ShaderTagId[] shaderTagIds = {
         new ShaderTagId("CustomTexturedLit"),
+        new ShaderTagId("CustomGrass"),
         new ShaderTagId("SRPDefaultUnlit"),
         new ShaderTagId("UniversalForward"),
         new ShaderTagId("UniversalForwardOnly")
@@ -46,7 +47,12 @@ public partial class CameraRenderer
 
         Setup();
         lighting.Setup(context, cullingResults);
+        // The shadow pass changes the active view and projection matrices.
+        buffer.SetRenderTarget(BuiltinRenderTextureType.CameraTarget);
+        ExecuteBuffer();
+        context.SetupCameraProperties(camera);
         DrawVisibleGeometry(useGPUInstancing);
+        lighting.Cleanup(context);
 
         DrawUnsupportedShaders();
         DrawGizmos();
