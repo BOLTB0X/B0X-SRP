@@ -3,12 +3,12 @@
 
 #include "../ShaderLibrary/Common.hlsl"
 #include "../ShaderLibrary/Surface.hlsl"
+#include "../ShaderLibrary/Shadows.hlsl"
 #include "../ShaderLibrary/Light.hlsl"
 #include "../ShaderLibrary/BRDF.hlsl"
 #include "../ShaderLibrary/Lighting.hlsl"
-#include "../ShaderLibrary/Shadows.hlsl"
 
-float4 _B0XTime;
+//float4 _B0XTime;
 
 TEXTURE2D(_BaseMap);
 SAMPLER(sampler_BaseMap);
@@ -48,7 +48,7 @@ GrassPassVaryings GrassPassVertex (GrassPassAttributes input)
 
     float3 positionOS = input.positionOS;
 
-    float wave = sin(_B0XTime.y * 3.0 + positionOS.x + positionOS.z) * 0.03;
+    float wave = sin(_Time.y * 3.0 + positionOS.x + positionOS.z) * 0.03;
     positionOS.x += wave * input.uv.y; 
 
     float3 positionWS = TransformObjectToWorld(positionOS);
@@ -76,13 +76,15 @@ float4 GrassPassFragment (GrassPassVaryings input) : SV_TARGET
     #endif
 
     Surface surface;
+    surface.position = input.positionWS;
     surface.normal = normalize(input.normalWS);
     surface.viewDirection = SafeNormalize(_WorldSpaceCameraPos - input.positionWS);
     surface.color = base.rgb;
     surface.alpha = base.a;
     surface.metallic = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Metallic);
     surface.smoothness = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Smoothness);
-    surface.shadowAttenuation = GetDirectionalShadowAttenuation(input.positionWS);
+    surface.depth = -TransformWorldToView(input.positionWS).z;
+    surface.dither = InterleavedGradientNoise(input.positionCS.xy, 0);
 
     BRDF brdf = GetBRDF(surface);
     float3 color = GetLighting(surface, brdf);
@@ -90,20 +92,6 @@ float4 GrassPassFragment (GrassPassVaryings input) : SV_TARGET
     color += surface.color * _B0XAmbientColor.rgb * OneMinusReflectivity(surface.metallic);
 
     return float4(color, surface.alpha);
-}
-
-float4 GrassShadowCasterFragment (GrassPassVaryings input) : SV_TARGET
-{
-    UNITY_SETUP_INSTANCE_ID(input);
-
-    #if defined(_CLIPPING)
-        float4 baseColor = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _BaseColor);
-        float cutoff = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Cutoff);
-        float alpha = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv).a * baseColor.a;
-        clip(alpha - cutoff);
-    #endif
-
-    return 0.0;
 }
 
 #endif

@@ -39,11 +39,6 @@ public class GrassRenderer : MonoBehaviour
             Debug.LogWarning("if (instanceCount < 1) error", this);
             instanceCount = 1;
         }
-        else if (instanceCount > 2047)
-        {
-            Debug.LogWarning("if (instanceCount > 2047) error", this);
-            instanceCount = 2047;
-        }
 
         if (grassMesh == null || grassMesh.name == "Quad")
             grassMesh = CreateCrossedBladeMesh();

@@ -3,15 +3,17 @@
 
 #include "../ShaderLibrary/Common.hlsl"
 #include "../ShaderLibrary/Surface.hlsl"
+#include "../ShaderLibrary/Shadows.hlsl"
 #include "../ShaderLibrary/Light.hlsl"
 #include "../ShaderLibrary/BRDF.hlsl"
 #include "../ShaderLibrary/Lighting.hlsl"
-#include "../ShaderLibrary/Shadows.hlsl"
 
 TEXTURE2D(_BaseMap);
 SAMPLER(sampler_BaseMap);
 TEXTURE2D(_NormalMap);
 SAMPLER(sampler_NormalMap);
+TEXTURE2D(_HeightMap);
+SAMPLER(sampler_HeightMap);
 TEXTURE2D(_MetallicMap);
 SAMPLER(sampler_MetallicMap);
 TEXTURE2D(_RoughnessMap);
@@ -22,11 +24,13 @@ SAMPLER(sampler_OcclusionMap);
 CBUFFER_START(UnityPerMaterial)
     float4 _BaseMap_ST;
     float4 _NormalMap_ST;
+    float4 _HeightMap_ST;
     float4 _MetallicMap_ST;
     float4 _RoughnessMap_ST;
     float4 _OcclusionMap_ST;
     float4 _BaseColor;
     float  _NormalScale;
+    float  _ParallaxStrength;
     float  _Metallic;
     float  _Smoothness;
     float  _OcclusionStrength;
@@ -76,11 +80,39 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
 {
     UNITY_SETUP_INSTANCE_ID(input);
 
-    float2 baseUV = TRANSFORM_TEX(input.uv, _BaseMap);
-    float2 normalUV = TRANSFORM_TEX(input.uv, _NormalMap);
-    float2 metallicUV = TRANSFORM_TEX(input.uv, _MetallicMap);
-    float2 roughnessUV = TRANSFORM_TEX(input.uv, _RoughnessMap);
-    float2 occlusionUV = TRANSFORM_TEX(input.uv, _OcclusionMap);
+    float2 uv = input.uv;
+    float3 normalWS = normalize(input.normalWS);
+    float tangentLengthSq = dot(input.tangentWS.xyz, input.tangentWS.xyz);
+    if (tangentLengthSq > 1e-6 && abs(input.tangentWS.w) > 0.5)
+    {
+        float3 tangentWS = input.tangentWS.xyz * rsqrt(tangentLengthSq);
+        tangentWS = normalize(tangentWS - normalWS * dot(normalWS, tangentWS));
+        float3 bitangentWS = normalize(cross(normalWS, tangentWS)) * input.tangentWS.w;
+
+        #if defined(_PARALLAX_MAPPING)
+            float3 viewDirectionWS =
+                SafeNormalize(_WorldSpaceCameraPos - input.positionWS);
+            float3 viewDirectionTS = float3(
+                dot(viewDirectionWS, tangentWS),
+                dot(viewDirectionWS, bitangentWS),
+                dot(viewDirectionWS, normalWS)
+            );
+            float height = SAMPLE_TEXTURE2D(
+                _HeightMap, sampler_HeightMap,
+                TRANSFORM_TEX(uv, _HeightMap)
+            ).r;
+            float2 parallaxOffset = viewDirectionTS.xy /
+                max(viewDirectionTS.z, 0.1) *
+                ((height - 0.5) * _ParallaxStrength);
+            uv += parallaxOffset;
+        #endif
+    }
+
+    float2 baseUV = TRANSFORM_TEX(uv, _BaseMap);
+    float2 normalUV = TRANSFORM_TEX(uv, _NormalMap);
+    float2 metallicUV = TRANSFORM_TEX(uv, _MetallicMap);
+    float2 roughnessUV = TRANSFORM_TEX(uv, _RoughnessMap);
+    float2 occlusionUV = TRANSFORM_TEX(uv, _OcclusionMap);
 
     float4 baseSample = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, baseUV) * _BaseColor;
 
@@ -88,8 +120,6 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
         clip(baseSample.a - _Cutoff);
     #endif
 
-    float3 normalWS = normalize(input.normalWS);
-    float tangentLengthSq = dot(input.tangentWS.xyz, input.tangentWS.xyz);
     if (tangentLengthSq > 1e-6 && abs(input.tangentWS.w) > 0.5)
     {
         float3 tangentWS = input.tangentWS.xyz * rsqrt(tangentLengthSq);
@@ -105,6 +135,7 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
     Surface surface;
     surface.normal = normalWS;
     surface.viewDirection = SafeNormalize(_WorldSpaceCameraPos - input.positionWS);
+    surface.depth = -TransformWorldToView(input.positionWS).z;
     surface.color = baseSample.rgb;
     surface.alpha = baseSample.a;
     surface.metallic = saturate(
@@ -112,7 +143,8 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
     );
     float roughness = saturate(SAMPLE_TEXTURE2D(_RoughnessMap, sampler_RoughnessMap, roughnessUV).r);
     surface.smoothness = saturate((1.0 - roughness) * _Smoothness);
-    surface.shadowAttenuation = GetDirectionalShadowAttenuation(input.positionWS);
+	surface.dither = InterleavedGradientNoise(input.positionCS.xy, 0);
+	surface.position = input.positionWS;
 
     BRDF brdf = GetBRDF(surface);
     float3 color = GetLighting(surface, brdf);

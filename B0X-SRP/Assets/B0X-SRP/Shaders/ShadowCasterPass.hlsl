@@ -1,49 +1,63 @@
-#ifndef B0X_SHADOW_CASTER_PASS_INCLUDED
-#define B0X_SHADOW_CASTER_PASS_INCLUDED
+#ifndef CUSTOM_SHADOW_CASTER_PASS_INCLUDED
+#define CUSTOM_SHADOW_CASTER_PASS_INCLUDED
 
 #include "../ShaderLibrary/Common.hlsl"
-#include "../ShaderLibrary/Light.hlsl"
 
 TEXTURE2D(_BaseMap);
 SAMPLER(sampler_BaseMap);
 
-CBUFFER_START(UnityPerMaterial)
-    float4 _BaseMap_ST;
-    float4 _BaseColor;
-    float _Cutoff;
-CBUFFER_END
+UNITY_INSTANCING_BUFFER_START(UnityPerMaterial)
+	UNITY_DEFINE_INSTANCED_PROP(float4, _BaseMap_ST)
+	UNITY_DEFINE_INSTANCED_PROP(float4, _BaseColor)
+	UNITY_DEFINE_INSTANCED_PROP(float, _Cutoff)
+UNITY_INSTANCING_BUFFER_END(UnityPerMaterial)
 
-struct ShadowCasterAttributes
+struct Attributes
 {
-    float3 positionOS : POSITION;
-    float3 normalOS : NORMAL;
-    float2 uv : TEXCOORD0;
+	float3 positionOS : POSITION;
+	float2 baseUV : TEXCOORD0;
+	UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
-struct ShadowCasterVaryings
-{
-    float4 positionCS : SV_POSITION;
-    float2 uv : TEXCOORD0;
+struct Varyings {
+	float4 positionCS : SV_POSITION;
+	float2 baseUV : VAR_BASE_UV;
+	UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
-ShadowCasterVaryings ShadowCasterVertex(ShadowCasterAttributes input)
+Varyings ShadowCasterPassVertex (Attributes input)
 {
-    ShadowCasterVaryings output;
-    float3 positionWS = TransformObjectToWorld(input.positionOS);
-    float3 normalWS = TransformObjectToWorldNormal(input.normalOS);
-    positionWS += normalWS * 0.002;
-    output.positionCS = TransformWorldToHClip(positionWS);
-    output.uv = input.uv * _BaseMap_ST.xy + _BaseMap_ST.zw;
-    return output;
+	Varyings output;
+	UNITY_SETUP_INSTANCE_ID(input);
+	UNITY_TRANSFER_INSTANCE_ID(input, output);
+	float3 positionWS = TransformObjectToWorld(input.positionOS);
+	output.positionCS = TransformWorldToHClip(positionWS);
+
+	#if UNITY_REVERSED_Z
+		output.positionCS.z =
+			min(output.positionCS.z, output.positionCS.w * UNITY_NEAR_CLIP_VALUE);
+	#else
+		output.positionCS.z =
+			max(output.positionCS.z, output.positionCS.w * UNITY_NEAR_CLIP_VALUE);
+	#endif
+
+	float4 baseST = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _BaseMap_ST);
+	output.baseUV = input.baseUV * baseST.xy + baseST.zw;
+	return output;
 }
 
-float4 ShadowCasterFragment(ShadowCasterVaryings input) : SV_TARGET
+void ShadowCasterPassFragment (Varyings input)
 {
-    #if defined(_CLIPPING)
-        float alpha = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv).a * _BaseColor.a;
-        clip(alpha - _Cutoff);
-    #endif
-    return 0.0;
+	UNITY_SETUP_INSTANCE_ID(input);
+	float4 baseMap = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.baseUV);
+	float4 baseColor = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _BaseColor);
+	float4 base = baseMap * baseColor;
+	#if defined(_SHADOWS_CLIP)
+		clip(base.a - UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Cutoff));
+	#elif defined(_SHADOWS_DITHER)
+		float dither = InterleavedGradientNoise(input.positionCS.xy, 0);
+		clip(base.a - dither);
+	#endif
 }
 
 #endif

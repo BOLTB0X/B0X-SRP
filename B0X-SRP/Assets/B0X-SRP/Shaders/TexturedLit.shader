@@ -6,6 +6,9 @@ Shader "Custom/Shaders/TexturedLit"
 		_BaseColor("Color", Color) = (0.5, 0.5, 0.5, 1.0)
 		_NormalMap("Normal Map", 2D) = "bump" {}
 		_NormalScale("Normal Scale", Range(0, 2)) = 1
+		_HeightMap("Height Map", 2D) = "gray" {}
+		[Toggle(_PARALLAX_MAPPING)] _ParallaxMapping ("Use Height Map", Float) = 0
+		_ParallaxStrength("Height Scale", Range(0, 0.1)) = 0.02
 		_MetallicMap("Metallic Map", 2D) = "black" {}
 		_Cutoff ("Alpha Cutoff", Range(0.0, 1.0)) = 0.5
 		[Toggle(_CLIPPING)] _Clipping ("Alpha Clipping", Float) = 0
@@ -36,6 +39,7 @@ Shader "Custom/Shaders/TexturedLit"
 			#pragma target 3.5
 			#pragma shader_feature _CLIPPING
 			#pragma shader_feature _PREMULTIPLY_ALPHA
+			#pragma shader_feature _PARALLAX_MAPPING
 			#pragma multi_compile_instancing
 			#pragma vertex LitPassVertex
 			#pragma fragment LitPassFragment
@@ -45,18 +49,18 @@ Shader "Custom/Shaders/TexturedLit"
 
 		Pass
 		{
-			Name "ShadowCaster"
-			Tags { "LightMode" = "ShadowCaster" }
-			Cull Back
-			ZWrite On
-			ZTest LEqual
+			Tags {
+				"LightMode" = "ShadowCaster"
+			}
+
 			ColorMask 0
 
 			HLSLPROGRAM
 			#pragma target 3.5
-			#pragma shader_feature _CLIPPING
-			#pragma vertex ShadowCasterVertex
-			#pragma fragment ShadowCasterFragment
+			#pragma shader_feature _ _SHADOWS_CLIP _SHADOWS_DITHER
+			#pragma multi_compile_instancing
+			#pragma vertex ShadowCasterPassVertex
+			#pragma fragment ShadowCasterPassFragment
 			#include "ShadowCasterPass.hlsl"
 			ENDHLSL
 		}

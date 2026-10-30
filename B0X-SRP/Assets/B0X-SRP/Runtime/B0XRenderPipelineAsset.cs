@@ -11,9 +11,11 @@ public class B0XRenderPipelineAsset : RenderPipelineAsset
     bool useGPUInstancing = true;
 	[SerializeField]
 	bool useSRPBatcher = true;
+    [SerializeField]
+	ShadowSettings shadows = default;
 
     protected override RenderPipeline CreatePipeline()
     {
-        return new B0XRenderPipeline(useGPUInstancing, useSRPBatcher);
+        return new B0XRenderPipeline(useGPUInstancing, useSRPBatcher, shadows);
     }
 }

@@ -20,7 +20,6 @@ public partial class CameraRenderer
     ScriptableRenderContext context;
     Camera camera;
     CullingResults cullingResults;
-
     Lighting lighting = new Lighting();
 
 #if UNITY_EDITOR
@@ -34,39 +33,42 @@ public partial class CameraRenderer
     partial void DrawGizmos();
     partial void DrawUnsupportedShaders();
 
-    public void Render (ScriptableRenderContext context, Camera camera, bool useGPUInstancing)
+    public void Render (ScriptableRenderContext context,
+                        Camera                  camera,
+                        ShadowSettings          shadowSettings,
+                        bool                    useGPUInstancing)
     {
         this.context = context;
         this.camera = camera;
 
         PrepareBuffer();
         PrepareForSceneWindow();
-        if (!Cull()) {
-            return;
-        }
-
-        Setup();
-        lighting.Setup(context, cullingResults);
-        // The shadow pass changes the active view and projection matrices.
-        buffer.SetRenderTarget(BuiltinRenderTextureType.CameraTarget);
-        ExecuteBuffer();
-        context.SetupCameraProperties(camera);
-        DrawVisibleGeometry(useGPUInstancing);
-        lighting.Cleanup(context);
-
-        DrawUnsupportedShaders();
-        DrawGizmos();
-        Submit();
+		if (!Cull(shadowSettings.maxDistance)) {
+			return;
+		}
+		
+		buffer.BeginSample(SampleName);
+		ExecuteBuffer();
+		lighting.Setup(context, cullingResults, shadowSettings);
+		buffer.EndSample(SampleName);
+		Setup();
+		DrawVisibleGeometry(useGPUInstancing);
+		DrawUnsupportedShaders();
+		DrawGizmos();
+		lighting.Cleanup();
+		Submit();
     }
 
-    bool Cull()
+	bool Cull (float maxShadowDistance)
     {
-        if (camera.TryGetCullingParameters(out ScriptableCullingParameters p)) {
-            cullingResults = context.Cull(ref p);
-            return true;
-        }
-        return false;
-    }
+		if (camera.TryGetCullingParameters(out ScriptableCullingParameters p))
+        {
+			p.shadowDistance = Mathf.Min(maxShadowDistance, camera.farClipPlane);
+			cullingResults = context.Cull(ref p);
+			return true;
+		}
+		return false;
+	}
 
     void Setup()
     {
