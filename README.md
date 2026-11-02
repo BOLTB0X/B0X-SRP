@@ -19,6 +19,8 @@
 
 - [Night Run Studio: 화염 생성: Unity 파티클 시스템 튜토리얼](https://www.youtube.com/watch?v=Oo6ktMZzzhg)
 
+- [johnstejskal: How to create realistic smoke in Unity](https://johnstejskal.com/wp/how-to-create-realistic-smoke-in-unity/)
+
 ## Source
 
 - [Bonfire 3D Model Source - Sketchfab(ToxaGrom: Bonfire)](https://sketchfab.com/3d-models/bonfire-6f61e3ee52594ba0a416b2eb30d40efe)
@@ -30,3 +32,6 @@
 - [Sand Material Source - Sketchfab(Batuhan13: Sand Material)](https://jooinn.com/sand-texture-2.html)
 
 - [Fire texture Source - pngtre(Dynamic Fire Flame In Mid Moti With Glowing Heat Effect)](https://pngtree.com/freepng/dynamic-fire-flame-in-mid-moti-with-glowing-heat-effect_21122464.html)
+
+
+- [Smoke texture Source - johnstejskal: How to create realistic smoke in Unity](https://johnstejskal.com/wp/how-to-create-realistic-smoke-in-unity/)
