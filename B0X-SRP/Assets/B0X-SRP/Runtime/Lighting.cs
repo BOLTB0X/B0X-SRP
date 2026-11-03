@@ -8,7 +8,7 @@ public class Lighting
 	const string bufferName = "Lighting";
 
 	const int maxDirLightCount = 2;
-	const int maxPointLightCount = 4;
+	const int maxPointLightCount = 64;
 
 	static int
 		dirLightCountId = Shader.PropertyToID("_DirectionalLightCount"),
@@ -101,9 +101,14 @@ public class Lighting
 
 	void SetupPointLight (int index, ref VisibleLight visibleLight)
 	{
-		Vector4 position = visibleLight.localToWorldMatrix.GetColumn(3);
-		position.w = visibleLight.range;
-		pointLightPositions[index] = position;
+		// Vector4 position = visibleLight.localToWorldMatrix.GetColumn(3);
+		// position.w = visibleLight.range;
+		// pointLightPositions[index] = position;
+		// pointLightColors[index] = visibleLight.finalColor;
 		pointLightColors[index] = visibleLight.finalColor;
+				Vector4 position = visibleLight.localToWorldMatrix.GetColumn(3);
+		position.w =
+			1f / Mathf.Max(visibleLight.range * visibleLight.range, 0.00001f);
+		pointLightPositions[index] = position;
 	}
 }
