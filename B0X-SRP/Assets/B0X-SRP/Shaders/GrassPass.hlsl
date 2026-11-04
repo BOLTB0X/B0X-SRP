@@ -78,12 +78,15 @@ float4 GrassPassFragment (GrassPassVaryings input) : SV_TARGET
     Surface surface;
     surface.position = input.positionWS;
     surface.normal = normalize(input.normalWS);
+    surface.interpolatedNormal = surface.normal;
     surface.viewDirection = SafeNormalize(_WorldSpaceCameraPos - input.positionWS);
     surface.color = base.rgb;
     surface.alpha = base.a;
     surface.metallic = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Metallic);
+    surface.occlusion = 1.0;
     surface.smoothness = UNITY_ACCESS_INSTANCED_PROP(UnityPerMaterial, _Smoothness);
     surface.depth = -TransformWorldToView(input.positionWS).z;
+    surface.fresnelStrength = 1.0;
     surface.dither = InterleavedGradientNoise(input.positionCS.xy, 0);
 
     BRDF brdf = GetBRDF(surface);

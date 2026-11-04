@@ -3,6 +3,7 @@
 
 #define MAX_DIRECTIONAL_LIGHT_COUNT 2
 #define MAX_POINT_LIGHT_COUNT 64
+#define MAX_SPOT_LIGHT_COUNT 64
 
 CBUFFER_START(_CustomLight)
 	int    _DirectionalLightCount;
@@ -10,9 +11,14 @@ CBUFFER_START(_CustomLight)
 	float4 _DirectionalLightDirections[MAX_DIRECTIONAL_LIGHT_COUNT];
 	float4 _DirectionalLightShadowData[MAX_DIRECTIONAL_LIGHT_COUNT];
 
-	int     _PointLightCount;
+	int    _PointLightCount;
 	float4 _PointLightPositions[MAX_POINT_LIGHT_COUNT];
 	float4 _PointLightColors[MAX_POINT_LIGHT_COUNT];
+	int    _SpotLightCount;
+	float4 _SpotLightPositions[MAX_SPOT_LIGHT_COUNT];
+	float4 _SpotLightColors[MAX_SPOT_LIGHT_COUNT];
+	float4 _SpotLightDirections[MAX_SPOT_LIGHT_COUNT];
+	float4 _SpotLightSpotAngles[MAX_SPOT_LIGHT_COUNT];
 CBUFFER_END
 
 struct Light
@@ -55,6 +61,22 @@ int GetPointLightCount ()
 	return _PointLightCount;
 }
 
+int GetSpotLightCount () { return _SpotLightCount; }
+
+Light GetSpotLight (int index, Surface surfaceWS)
+{
+	Light light;
+	float3 ray = _SpotLightPositions[index].xyz - surfaceWS.position;
+	float distanceSqr = max(dot(ray, ray), 0.00001);
+	light.direction = ray * rsqrt(distanceSqr);
+	float rangeFade = saturate(1.0 - distanceSqr * _SpotLightPositions[index].w);
+	float coneCos = dot(-light.direction, _SpotLightDirections[index].xyz);
+	float coneFade = saturate((coneCos - _SpotLightDirections[index].w) / max(1.0 - _SpotLightDirections[index].w, 0.001));
+	light.color = _SpotLightColors[index].rgb;
+	light.attenuation = Square(rangeFade) * coneFade / distanceSqr;
+	return light;
+}
+
 Light GetPointLight (int index, Surface surfaceWS)
 {
 	// Light light;
@@ -72,9 +94,7 @@ Light GetPointLight (int index, Surface surfaceWS)
 	float3 ray = _PointLightPositions[index].xyz - surfaceWS.position;
 	light.direction = normalize(ray);
 	float distanceSqr = max(dot(ray, ray), 0.00001);
-	float rangeAttenuation = Square(
-		saturate(1.0 - Square(distanceSqr * _PointLightPositions[index].w))
-	);
+	float rangeAttenuation = Square(saturate(1.0 - distanceSqr * _PointLightPositions[index].w));
 	light.attenuation = rangeAttenuation / distanceSqr;
 	return light;
 }

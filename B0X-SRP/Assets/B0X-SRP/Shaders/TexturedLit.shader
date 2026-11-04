@@ -18,6 +18,8 @@ Shader "Custom/Shaders/TexturedLit"
 		_RoughnessMap("Roughness Map", 2D) = "black" {}
 		_OcclusionMap("Occlusion Map", 2D) = "white" {}
 		_OcclusionStrength("Occlusion Strength", Range(0, 1)) = 1
+		_EmissionMap("Emission Map", 2D) = "white" {}
+		[HDR] _EmissionColor("Emission Color", Color) = (0, 0, 0, 0)
 
 		[Toggle(_PREMULTIPLY_ALPHA)] _PremulAlpha ("Premultiply Alpha", Float) = 0
 
@@ -41,9 +43,24 @@ Shader "Custom/Shaders/TexturedLit"
 			#pragma shader_feature _PREMULTIPLY_ALPHA
 			#pragma shader_feature _PARALLAX_MAPPING
 			#pragma multi_compile_instancing
+			#pragma multi_compile _ LIGHTMAP_ON
+			#pragma multi_compile _ _SHADOW_MASK_ALWAYS _SHADOW_MASK_DISTANCE
 			#pragma vertex LitPassVertex
 			#pragma fragment LitPassFragment
 			#include "TexturedLitPass.hlsl"
+			ENDHLSL
+		}
+
+		Pass
+		{
+			Tags { "LightMode" = "Meta" }
+			Cull Off
+			HLSLPROGRAM
+			#pragma target 3.5
+			#pragma shader_feature _CLIPPING
+			#pragma vertex TexturedMetaVertex
+			#pragma fragment TexturedMetaFragment
+			#include "TexturedMetaPass.hlsl"
 			ENDHLSL
 		}
 

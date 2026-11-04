@@ -26,38 +26,42 @@ Material:
     m_TexEnvs:
     - _BaseMap:
         m_Texture: {fileID: 2800000, guid: ad5d49ddc5d9c4592944a8ed9d6e4689, type: 3}
-        m_Scale: {x: 8, y: 8}
+        m_Scale: {x: 32, y: 32}
+        m_Offset: {x: 0, y: 0}
+    - _EmissionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _HeightMap:
         m_Texture: {fileID: 2800000, guid: 6190a46cbe1134915a0307ea93bc4384, type: 3}
-        m_Scale: {x: 1, y: 1}
+        m_Scale: {x: 32, y: 32}
         m_Offset: {x: 0, y: 0}
     - _MetallicMap:
         m_Texture: {fileID: 2800000, guid: c09c724dc9c334b608ecdc5f208e06ad, type: 3}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 1, y: 1}
+        m_Scale: {x: 32, y: 32}
+        m_Offset: {x: 0, y: 0}
     - _NormalMap:
         m_Texture: {fileID: 2800000, guid: 2bc7ff90e5b5442a3992edfc38b8d61f, type: 3}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 1, y: 1}
+        m_Scale: {x: 32, y: 32}
+        m_Offset: {x: 0, y: 0}
     - _OcclusionMap:
         m_Texture: {fileID: 2800000, guid: ba49bc422a19348ea9a5456ac8e26d13, type: 3}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 1, y: 1}
+        m_Scale: {x: 32, y: 32}
+        m_Offset: {x: 0, y: 0}
     - _RoughnessMap:
         m_Texture: {fileID: 2800000, guid: bb5610f411e4a40c29c8b4efe1e36281, type: 3}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 1, y: 1}
+        m_Scale: {x: 32, y: 32}
+        m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
     - _Clipping: 0
     - _Cutoff: 0.5
     - _DstBlend: 0
     - _Metallic: 0
-    - _NormalScale: 1
+    - _NormalScale: 0.1
     - _OcclusionStrength: 1
     - _ParallaxMapping: 1
-    - _ParallaxStrength: 0.02
+    - _ParallaxStrength: 0.001
     - _PremulAlpha: 0
     - _Roughness: 1
     - _Smoothness: 0.15
@@ -65,5 +69,6 @@ Material:
     - _ZWrite: 1
     m_Colors:
     - _BaseColor: {r: 0.990566, g: 0.990566, b: 0.990566, a: 1}
+    - _EmissionColor: {r: 0, g: 0, b: 0, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

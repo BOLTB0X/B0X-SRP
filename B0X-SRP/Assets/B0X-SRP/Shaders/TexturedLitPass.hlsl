@@ -7,6 +7,7 @@
 #include "../ShaderLibrary/Light.hlsl"
 #include "../ShaderLibrary/BRDF.hlsl"
 #include "../ShaderLibrary/Lighting.hlsl"
+#include "../ShaderLibrary/GI.hlsl"
 
 TEXTURE2D(_BaseMap);
 SAMPLER(sampler_BaseMap);
@@ -20,15 +21,19 @@ TEXTURE2D(_RoughnessMap);
 SAMPLER(sampler_RoughnessMap);
 TEXTURE2D(_OcclusionMap);
 SAMPLER(sampler_OcclusionMap);
+TEXTURE2D(_EmissionMap);
+SAMPLER(sampler_EmissionMap);
 
 CBUFFER_START(UnityPerMaterial)
     float4 _BaseMap_ST;
+    float4 _EmissionMap_ST;
     float4 _NormalMap_ST;
     float4 _HeightMap_ST;
     float4 _MetallicMap_ST;
     float4 _RoughnessMap_ST;
     float4 _OcclusionMap_ST;
     float4 _BaseColor;
+    float4 _EmissionColor;
     float  _NormalScale;
     float  _ParallaxStrength;
     float  _Metallic;
@@ -45,6 +50,7 @@ struct LitPassAttributes
     float3 normalOS : NORMAL;
     float4 tangentOS : TANGENT;
     float2 uv : TEXCOORD0;
+    GI_ATTRIBUTE_DATA
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
@@ -55,6 +61,7 @@ struct LitPassVaryings
     float3 normalWS : TEXCOORD1;
     float4 tangentWS : TEXCOORD2;
     float2 uv : TEXCOORD3;
+    GI_VARYINGS_DATA
     UNITY_VERTEX_INPUT_INSTANCE_ID
 };
 
@@ -63,6 +70,7 @@ LitPassVaryings LitPassVertex (LitPassAttributes input)
     LitPassVaryings output;
     UNITY_SETUP_INSTANCE_ID(input);
     UNITY_TRANSFER_INSTANCE_ID(input, output);
+    TRANSFER_GI_DATA(input, output);
 
     float3 positionWS = TransformObjectToWorld(input.positionOS);
     output.positionCS = TransformWorldToHClip(positionWS);
@@ -113,6 +121,8 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
     float2 metallicUV = TRANSFORM_TEX(uv, _MetallicMap);
     float2 roughnessUV = TRANSFORM_TEX(uv, _RoughnessMap);
     float2 occlusionUV = TRANSFORM_TEX(uv, _OcclusionMap);
+    float aoSample = SAMPLE_TEXTURE2D(_OcclusionMap, sampler_OcclusionMap, occlusionUV).r;
+    float ao = lerp(1.0, aoSample, _OcclusionStrength);
 
     float4 baseSample = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, baseUV) * _BaseColor;
 
@@ -134,6 +144,7 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
 
     Surface surface;
     surface.normal = normalWS;
+    surface.interpolatedNormal = normalWS;
     surface.viewDirection = SafeNormalize(_WorldSpaceCameraPos - input.positionWS);
     surface.depth = -TransformWorldToView(input.positionWS).z;
     surface.color = baseSample.rgb;
@@ -143,16 +154,19 @@ float4 LitPassFragment (LitPassVaryings input) : SV_TARGET
     );
     float roughness = saturate(SAMPLE_TEXTURE2D(_RoughnessMap, sampler_RoughnessMap, roughnessUV).r);
     surface.smoothness = saturate((1.0 - roughness) * _Smoothness);
+    surface.occlusion = ao;
+    surface.fresnelStrength = 1.0;
 	surface.dither = InterleavedGradientNoise(input.positionCS.xy, 0);
 	surface.position = input.positionWS;
 
     BRDF brdf = GetBRDF(surface);
     float3 color = GetLighting(surface, brdf);
+    GI gi = GetGI(GI_FRAGMENT_DATA(input), surface, brdf);
 
-    float aoSample = SAMPLE_TEXTURE2D(_OcclusionMap, sampler_OcclusionMap, occlusionUV).r;
-    float ao = lerp(1.0, aoSample, _OcclusionStrength);
-    color += surface.color * _B0XAmbientColor.rgb *
-        OneMinusReflectivity(surface.metallic) * ao;
+    color += (gi.diffuse * brdf.diffuse + gi.specular * brdf.specular) * surface.occlusion;
+    color += SAMPLE_TEXTURE2D(
+        _EmissionMap, sampler_EmissionMap, TRANSFORM_TEX(uv, _EmissionMap)
+    ).rgb * _EmissionColor.rgb;
 
     #if defined(_PREMULTIPLY_ALPHA)
         color *= surface.alpha;

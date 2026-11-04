@@ -24,6 +24,10 @@ float3 GetLighting (Surface surfaceWS, BRDF brdf)
 		Light light = GetPointLight(i, surfaceWS);
 		color += GetLighting(surfaceWS, brdf, light);
 	}
+	for (int i = 0; i < GetSpotLightCount(); i++) {
+		Light light = GetSpotLight(i, surfaceWS);
+		color += GetLighting(surfaceWS, brdf, light);
+	}
 	return color;
 }
 

@@ -10,6 +10,7 @@ public partial class CameraRenderer
 {
     const string bufferName = "Render Camera";
     static readonly ShaderTagId[] shaderTagIds = {
+        new ShaderTagId("CustomLit"),
         new ShaderTagId("CustomTexturedLit"),
         new ShaderTagId("CustomGrass"),
         new ShaderTagId("SRPDefaultUnlit"),
@@ -36,6 +37,7 @@ public partial class CameraRenderer
     public void Render (ScriptableRenderContext context,
                         Camera                  camera,
                         ShadowSettings          shadowSettings,
+                        bool                    useLightsPerObject,
                         bool                    useGPUInstancing)
     {
         this.context = context;
@@ -49,10 +51,10 @@ public partial class CameraRenderer
 		
 		buffer.BeginSample(SampleName);
 		ExecuteBuffer();
-		lighting.Setup(context, cullingResults, shadowSettings);
+		lighting.Setup(context, cullingResults, shadowSettings, useLightsPerObject);
 		buffer.EndSample(SampleName);
 		Setup();
-		DrawVisibleGeometry(useGPUInstancing);
+		DrawVisibleGeometry(useGPUInstancing, useLightsPerObject);
 		DrawUnsupportedShaders();
 		DrawGizmos();
 		lighting.Cleanup();
@@ -74,7 +76,6 @@ public partial class CameraRenderer
     {
         context.SetupCameraProperties(camera);
         CameraClearFlags flags = camera.clearFlags;
-        //buffer.ClearRenderTarget(true, true, Color.clear);
         buffer.ClearRenderTarget(
 			flags <= CameraClearFlags.Depth,
 			flags == CameraClearFlags.Color,
@@ -98,9 +99,9 @@ public partial class CameraRenderer
         buffer.Clear();
     }
 
-    void DrawVisibleGeometry(bool useGPUInstancing)
+    void DrawVisibleGeometry(bool useGPUInstancing, bool useLightsPerObject)
     {
-		DrawRendererList(RenderQueueRange.opaque, SortingCriteria.CommonOpaque, useGPUInstancing);
+		DrawRendererList(RenderQueueRange.opaque, SortingCriteria.CommonOpaque, useGPUInstancing, useLightsPerObject);
 
 		if (camera.clearFlags == CameraClearFlags.Skybox)
 		{
@@ -108,16 +109,30 @@ public partial class CameraRenderer
 			ExecuteBuffer();
 		}
 
-		DrawRendererList(RenderQueueRange.transparent, SortingCriteria.CommonTransparent, useGPUInstancing);
+		DrawRendererList(RenderQueueRange.transparent, SortingCriteria.CommonTransparent, useGPUInstancing, useLightsPerObject);
     }
 
-	void DrawRendererList(RenderQueueRange queueRange, SortingCriteria sortingCriteria, bool useGPUInstancing)
+	void DrawRendererList(RenderQueueRange queueRange, SortingCriteria sortingCriteria, bool useGPUInstancing, bool useLightsPerObject)
 	{
+        PerObjectData lightsPerObjectFlags = useLightsPerObject ?
+			PerObjectData.LightData | PerObjectData.LightIndices :
+			PerObjectData.None;
+		var sortingSettings = new SortingSettings(camera) {
+			criteria = SortingCriteria.CommonOpaque
+		};
+
 		var drawingSettings = new DrawingSettings(
 			shaderTagIds[0], new SortingSettings(camera) { criteria = sortingCriteria }
 		)
 		{
-			enableInstancing = useGPUInstancing
+			enableInstancing = useGPUInstancing,
+            perObjectData =
+				PerObjectData.ReflectionProbes |
+				PerObjectData.Lightmaps | PerObjectData.ShadowMask |
+				PerObjectData.LightProbe | PerObjectData.OcclusionProbe |
+				PerObjectData.LightProbeProxyVolume |
+				PerObjectData.OcclusionProbeProxyVolume |
+				lightsPerObjectFlags
 		};
 		for (int i = 1; i < shaderTagIds.Length; i++)
 		{
