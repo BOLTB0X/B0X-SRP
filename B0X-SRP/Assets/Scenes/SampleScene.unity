@@ -2908,6 +2908,15 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2e779895e7295473a8da9bf623fedc9a, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1129228065}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2e779895e7295473a8da9bf623fedc9a, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1129228070}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2e779895e7295473a8da9bf623fedc9a, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1129228069}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2e779895e7295473a8da9bf623fedc9a, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1129228068}
   m_SourcePrefab: {fileID: 100100000, guid: 2e779895e7295473a8da9bf623fedc9a, type: 3}
 --- !u!1 &832575517
 GameObject:
@@ -2980,9 +2989,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8864f983a88c945d6bafce01d129d30e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::YBotController
-  moveSpeed: 3
-  gravity: -9.81
-  groundedGravity: -2
+  jumpKey: 122
+  sitKey: 99
   animator: {fileID: 1129228064}
 --- !u!143 &1129228066
 CharacterController:
@@ -3009,6 +3017,58 @@ CharacterController:
   m_SkinWidth: 0.08
   m_MinMoveDistance: 0.001
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &1129228068
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1129228062}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1230c00464610472e8ca8fd24de97105, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::YBotSit
+  reverseEndNormalizedTime: 0.02
+  standUpBlendTime: 0.15
+  sitTimeout: 5
+--- !u!114 &1129228069
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1129228062}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fd91302210ddd40d2a33c4965e5a2cac, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::YBotJump
+  jumpHeight: 0.8
+  takeoffTime: 0.58
+  takeoffDelayOffset: 0.1
+  landingTime: 1.06
+  landingLockTime: 0.25
+  landingBlendTime: 0.15
+--- !u!114 &1129228070
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1129228062}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 76534f29123b14fefb4518fb5fca7981, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::YBotMovement
+  walkSpeed: 3
+  runSpeed: 6
+  acceleration: 20
+  deceleration: 25
+  turnSpeed: 540
+  groundedGravity: -2
+  idleSpeedThreshold: 0.1
 --- !u!1 &1338289586
 GameObject:
   m_ObjectHideFlags: 0
@@ -5458,7 +5518,8 @@ MonoBehaviour:
   offset: {x: 0, y: 2.2, z: -5}
   lookHeight: 1.2
   followSmoothTime: 0.12
-  rotationSmoothSpeed: 12
+  rotationDeadZone: 50
+  rotationFollowSpeed: 120
 --- !u!1001 &1610852738
 PrefabInstance:
   m_ObjectHideFlags: 0
