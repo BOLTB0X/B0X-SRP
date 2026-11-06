@@ -46,7 +46,7 @@ public class ShadowSettings
 
 	public Directional directional = new Directional {
 		atlasSize = MapSize._1024,
-		filter = FilterMode.PCF2x2,
+		filter = FilterMode.PCF3x3,
 		cascadeCount = 4,
 		cascadeRatio1 = 0.1f,
 		cascadeRatio2 = 0.25f,

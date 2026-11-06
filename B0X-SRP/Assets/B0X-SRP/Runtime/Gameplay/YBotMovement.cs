@@ -1,6 +1,27 @@
 using UnityEngine;
 
 /// <summary>
+/// 수평 이동을 어떻게 처리할지
+/// </summary>
+public enum YBotMoveMode
+{
+    Free,   // 입력에 따라 가감속하고 회전
+    Stop,   // 입력을 무시하고 0으로 감속 (제자리 점프/앉기 중)
+    Hold,   // 현재 속도와 방향을 그대로 유지 (걷기/달리기 점프 중)
+    Brake   // 진행 방향은 유지하고 착지 감속
+}
+
+/// <summary>
+/// 현재 수평 속도 기준 이동 상태
+/// </summary>
+public enum YBotLocomotion
+{
+    Idle,
+    Walking,
+    Running
+}
+
+/// <summary>
 /// 수평 이동(가감속, 회전), 중력, CharacterController 이동, Speed 파라미터 갱신 담당
 /// 입력을 직접 읽지 않고, YBotController가 넘겨주는 값만 사용
 /// </summary>
@@ -11,11 +32,12 @@ public class YBotMovement : MonoBehaviour
     [SerializeField] private float runSpeed = 6.0f;
     [SerializeField] private float acceleration = 20.0f;
     [SerializeField] private float deceleration = 25.0f;
+    [SerializeField] private float landingDeceleration = 15.0f;
     [SerializeField] private float turnSpeed = 540.0f;
-    [SerializeField] private float groundedGravity = -2.0f;
+    [SerializeField] private float groundedGravity = -3.0f;
     [Tooltip("이 속도 이하면 정지 상태로 취급 (점프/앉기 시작 조건)")]
     [SerializeField] private float idleSpeedThreshold = 0.1f;
-
+    [SerializeField] private float positionOffset = 0.08f;
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
 
     private CharacterController characterController;
@@ -28,11 +50,29 @@ public class YBotMovement : MonoBehaviour
     /// <summary>
     /// 중력 가속도 (음수). 점프 클립 기준으로 계산된 값을 YBotController가 넘겨줌
     /// </summary>
-    public float Gravity { get; set; } = -9.81f;
+    public float Gravity { get; set; } = -9.0f;
 
     public float VerticalVelocity => verticalVelocity;
     public bool IsGrounded => characterController.isGrounded;
     public bool IsIdle => currentSpeed <= idleSpeedThreshold;
+
+    /// <summary>
+    /// 현재 수평 속도 기준 이동 상태 (정지 / 걷기 / 달리기)
+    /// 걷기와 달리기는 두 속도의 중간값으로 나눔. 점프 종류를 고르는 데 사용
+    /// </summary>
+    public YBotLocomotion Locomotion
+    {
+        get
+        {
+            if (IsIdle)
+                return YBotLocomotion.Idle;
+
+            float runThreshold = (walkSpeed + runSpeed) * 0.5f;
+            return currentSpeed >= runThreshold
+                ? YBotLocomotion.Running
+                : YBotLocomotion.Walking;
+        }
+    }
 
     public void Initialize(CharacterController controller, Animator targetAnimator)
     {
@@ -41,12 +81,12 @@ public class YBotMovement : MonoBehaviour
 
         // 캐릭터 피벗이 발 위치이므로 캡슐 중심을 높이의 절반으로
         Vector3 center = characterController.center;
-        center.y = characterController.height * 0.5f;
+        center.y = characterController.height * 0.5f + positionOffset;
         characterController.center = center;
     }
 
-    /// <summary>수
-    /// 직 속도를 즉시 지정한다 (점프 이륙)
+    /// <summary>
+    /// 수직 속도를 즉시 지정 (점프 이륙)
     /// </summary>
     public void Launch(float velocity)
     {
@@ -56,14 +96,16 @@ public class YBotMovement : MonoBehaviour
     /// <summary>
     /// 프레임당 한 번 호출. 수평 가감속 -> 수직 속도 -> CharacterController 이동 -> 애니메이터 갱신 순서
     /// </summary>
-    /// <param name="wantsMove">false면 입력을 무시하고 0으로 감속 (점프/앉기 중 잠금)</param>
+    /// <param name="hasMoveInput">이동 입력이 있는지</param>
+    /// <param name="mode">수평 이동 처리 방식 (Free / Stop / Hold)</param>
     public void Tick(
-        Vector3 inputDirection,
-        bool    wantsMove,
-        bool    isRunning,
-        bool    grounded)
+        Vector3      inputDirection,
+        bool         hasMoveInput,
+        bool         isRunning,
+        bool         grounded,
+        YBotMoveMode mode)
     {
-        UpdateHorizontal(inputDirection, wantsMove, isRunning);
+        UpdateHorizontal(inputDirection, hasMoveInput, isRunning, mode);
         UpdateVertical(grounded);
 
         Vector3 velocity = moveDirection * currentSpeed;
@@ -75,13 +117,28 @@ public class YBotMovement : MonoBehaviour
 
     /// <summary>
     /// 수평 속도 가감속과 회전. 멈출 때도 마지막 방향으로 감속하며 미끄러짐
+    /// Hold 모드에서는 속도와 방향을 건드리지 않음 (걷기/달리기 점프의 공중 모멘텀)
     /// </summary>
     private void UpdateHorizontal(
-        Vector3 inputDirection, 
-        bool    wantsMove,
-        bool    isRunning)
+        Vector3      inputDirection,
+        bool         hasMoveInput,
+        bool         isRunning,
+        YBotMoveMode mode)
     {
-        float targetSpeed = !wantsMove ? 0.0f : isRunning ? runSpeed : walkSpeed;
+        if (mode == YBotMoveMode.Hold)
+            return;
+
+        if (mode == YBotMoveMode.Brake)
+        {
+            currentSpeed = Mathf.MoveTowards(
+                currentSpeed,
+                0.0f,
+                landingDeceleration * Time.deltaTime
+            );
+            return;
+        }
+
+        bool wantsMove = hasMoveInput && mode == YBotMoveMode.Free;
 
         if (wantsMove)
         {
@@ -93,6 +150,7 @@ public class YBotMovement : MonoBehaviour
             );
         }
 
+        float targetSpeed = !wantsMove ? 0.0f : isRunning ? runSpeed : walkSpeed;
         float rate = targetSpeed > currentSpeed ? acceleration : deceleration;
         currentSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, rate * Time.deltaTime);
     }

@@ -6,11 +6,13 @@ public class ThirdPersonCamera : MonoBehaviour
     [SerializeField] private Vector3 offset = new Vector3(0.0f, 2.2f, -5.0f);
     [SerializeField] private float lookHeight = 1.2f;
     [SerializeField] private float followSmoothTime = 0.12f;
-    [SerializeField] private float rotationDeadZone = 50.0f;
     [SerializeField] private float rotationFollowSpeed = 120.0f;
 
     private Vector3 followVelocity;
     private float cameraYaw;
+
+    public Vector3 Forward => Quaternion.Euler(0.0f, cameraYaw, 0.0f) * Vector3.forward;
+    public Vector3 Right => Quaternion.Euler(0.0f, cameraYaw, 0.0f) * Vector3.right;
 
     private void Awake()
     {
@@ -28,16 +30,6 @@ public class ThirdPersonCamera : MonoBehaviour
     {
         if (target == null)
             return;
-
-        float targetYaw = target.eulerAngles.y;
-        if (Mathf.Abs(Mathf.DeltaAngle(cameraYaw, targetYaw)) > rotationDeadZone)
-        {
-            cameraYaw = Mathf.MoveTowardsAngle(
-                cameraYaw,
-                targetYaw,
-                rotationFollowSpeed * Time.deltaTime
-            );
-        }
 
         Quaternion cameraOrbitRotation = Quaternion.Euler(0.0f, cameraYaw, 0.0f);
         Vector3 desiredPosition = target.position + cameraOrbitRotation * offset;

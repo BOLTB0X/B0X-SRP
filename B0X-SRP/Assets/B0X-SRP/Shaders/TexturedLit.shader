@@ -42,6 +42,7 @@ Shader "Custom/Shaders/TexturedLit"
 			#pragma shader_feature _CLIPPING
 			#pragma shader_feature _PREMULTIPLY_ALPHA
 			#pragma shader_feature _PARALLAX_MAPPING
+			#pragma multi_compile _ _DIRECTIONAL_PCF3 _DIRECTIONAL_PCF5 _DIRECTIONAL_PCF7
 			#pragma multi_compile_instancing
 			#pragma multi_compile _ LIGHTMAP_ON
 			#pragma multi_compile _ _SHADOW_MASK_ALWAYS _SHADOW_MASK_DISTANCE
