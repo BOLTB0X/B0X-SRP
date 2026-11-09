@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 입력을 읽고 Movement / Jump / Sit 기능을 조율하는 진입점
+/// 입력을 읽고 Movement / Jump / Sit / Push 기능을 조율하는 진입점
 /// Update는 여기에만 있고, 각 기능은 Tick으로 호출되므로 실행 순서가 항상 고정
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
@@ -37,10 +37,12 @@ public class YBotController : MonoBehaviour
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
 
+        EnsureHandIK();
+
         movement.Initialize(characterController, animator);
         jump.Initialize(animator, movement);
         sit.Initialize(animator);
-        push.Initialize(characterController, animator);
+        push.Initialize(animator, characterController);
     }
 
     /// <summary>
@@ -53,6 +55,50 @@ public class YBotController : MonoBehaviour
             component = gameObject.AddComponent<T>();
 
         return component;
+    }
+
+    /// <summary>
+    /// 손 IK는 Animator가 붙은 오브젝트(Y Bot 모델)에 있어야 동작함
+    /// 없으면 실행 시 자동으로 붙이고 경고를 띄움. 실행 중에 붙은 컴포넌트의 값은 종료하면 사라지므로,
+    /// 값을 저장하려면 에디터에서 붙일 것 (YBotController 컴포넌트 우클릭 > Add Hand IK To Animator Object)
+    /// </summary>
+    private void EnsureHandIK()
+    {
+        if (animator == null || animator.TryGetComponent<YBotHandIK>(out _))
+            return;
+
+        animator.gameObject.AddComponent<YBotHandIK>();
+        Debug.LogWarning(
+            "Animator 오브젝트에 YBotHandIK가 없어 실행 중에 자동으로 붙였습니다. " +
+            "값을 저장하려면 에디터에서 직접 붙이세요.", animator.gameObject);
+    }
+
+    /// <summary>
+    /// 에디터용: Animator가 붙은 오브젝트에 YBotHandIK를 붙임 (컴포넌트 헤더 우클릭 메뉴)
+    /// </summary>
+    [ContextMenu("Add Hand IK To Animator Object")]
+    private void AddHandIKInEditor()
+    {
+        Animator target = animator != null ? animator : GetComponentInChildren<Animator>();
+        if (target == null)
+        {
+            Debug.LogError("Animator를 찾을 수 없습니다.", this);
+            return;
+        }
+
+        if (target.TryGetComponent<YBotHandIK>(out _))
+        {
+            Debug.Log("이미 YBotHandIK가 있습니다.", target.gameObject);
+            return;
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.Undo.AddComponent<YBotHandIK>(target.gameObject);
+        UnityEditor.EditorUtility.SetDirty(target.gameObject);
+#else
+        target.gameObject.AddComponent<YBotHandIK>();
+#endif
+        Debug.Log("YBotHandIK를 붙였습니다.", target.gameObject);
     }
 
     private void Update()
@@ -80,17 +126,17 @@ public class YBotController : MonoBehaviour
         // isGrounded는 직전 Move 결과이므로 프레임 시작 시 한 번만 읽음
         bool grounded = movement.IsGrounded;
 
-        // 장애물이 앞에 있으면 점프/앉기보다 밀기를 우선합니다.
-        bool pushActive = push.Tick(grounded, hasMoveInput, inputDirection,
-            jump.IsActive || sit.IsActive);
+        // 기능 간 조율: 점프, 앉기, 밀기는 서로 막음
+        // 밀기는 이동 입력 방향의 물체를 감지해 시작하므로 가장 먼저 갱신
+        push.Tick(grounded, inputDirection, hasMoveInput, jump.IsActive || sit.IsActive);
 
-        // 기능 간 조율: 점프와 앉기는 서로 막음
         // 점프 종류(제자리/걷기/달리기)는 YBotJump가 시작 순간의 이동 상태로 고름
         // 앉기는 이동 중이면 멈출 때까지 대기
-        bool canStartJump = jumpPressed && grounded && !sit.IsActive && !pushActive;
+        bool canStartJump = jumpPressed && grounded && !sit.IsActive && !push.IsActive;
         jump.Tick(grounded, canStartJump);
-        sit.Tick(grounded, sitPressed && !pushActive, hasMoveInput, movement.IsIdle,
-            jump.IsActive || pushActive);
+
+        // 앉기 시작을 막는 조건 (파라미터 이름은 jumpActive지만 '시작 차단' 의미로 사용)
+        sit.Tick(grounded, sitPressed, hasMoveInput, movement.IsIdle, jump.IsActive || push.IsActive);
 
         // 수평 이동 방식: 점프 중이면 점프가 정하고 (제자리 = 정지, 이동 점프 = 속도 유지),
         // 앉는 중이면 정지. 정지 모드에서는 속도가 감속되어 0으로 수렴
@@ -99,12 +145,17 @@ public class YBotController : MonoBehaviour
             moveMode = jump.HorizontalMode;
         else if (sit.IsActive)
             moveMode = YBotMoveMode.Stop;
+        else if (push.IsActive)
+        {
+            moveMode = push.HorizontalMode;
+            movement.SetPush(push.Direction, push.Speed);
+        }
 
         movement.Gravity = jump.Gravity;
         movement.Tick(
             inputDirection,
             hasMoveInput,
-            isRunning && !pushActive,
+            isRunning,
             grounded,
             moveMode
         );

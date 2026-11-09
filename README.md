@@ -21,7 +21,13 @@
 
 - [johnstejskal: How to create realistic smoke in Unity](https://johnstejskal.com/wp/how-to-create-realistic-smoke-in-unity/)
 
+- [오늘코딩: 유니티 애니메이션 총정리 1편 - 기초 설명 및 구현](https://www.youtube.com/watch?v=Cru7ZVVgy28)
+
+- [오늘코딩:유니티 애니메이션 총정리 2편 - 트랜지션과 파라미터 설명](https://www.youtube.com/watch?v=dLomdF5Z0DU)
+
 ## Source
+
+- [Mixamo](https://www.mixamo.com/#/)
 
 - [Bonfire 3D Model Source - Sketchfab(ToxaGrom: Bonfire)](https://sketchfab.com/3d-models/bonfire-6f61e3ee52594ba0a416b2eb30d40efe)
 

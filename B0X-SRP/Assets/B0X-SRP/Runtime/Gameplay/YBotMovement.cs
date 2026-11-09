@@ -8,7 +8,8 @@ public enum YBotMoveMode
     Free,   // 입력에 따라 가감속하고 회전
     Stop,   // 입력을 무시하고 0으로 감속 (제자리 점프/앉기 중)
     Hold,   // 현재 속도와 방향을 그대로 유지 (걷기/달리기 점프 중)
-    Brake   // 진행 방향은 유지하고 착지 감속
+    Brake,  // 진행 방향은 유지하고 착지 감속
+    Push    // 지정한 밀기 방향으로 몸을 돌리고 지정 속도로 이동 (YBotPush)
 }
 
 /// <summary>
@@ -46,6 +47,10 @@ public class YBotMovement : MonoBehaviour
     private Vector3 moveDirection = Vector3.forward;
     private float currentSpeed;
     private float verticalVelocity;
+
+    // 밀기 중에 YBotController가 넘겨주는 방향/속도
+    private Vector3 pushDirection = Vector3.forward;
+    private float pushSpeed;
 
     /// <summary>
     /// 중력 가속도 (음수). 점프 클립 기준으로 계산된 값을 YBotController가 넘겨줌
@@ -94,10 +99,19 @@ public class YBotMovement : MonoBehaviour
     }
 
     /// <summary>
+    /// 밀기 방향과 속도를 지정 (Push 모드일 때 사용). 속도 0이면 제자리에서 방향만 맞춤
+    /// </summary>
+    public void SetPush(Vector3 direction, float speed)
+    {
+        pushDirection = direction;
+        pushSpeed = speed;
+    }
+
+    /// <summary>
     /// 프레임당 한 번 호출. 수평 가감속 -> 수직 속도 -> CharacterController 이동 -> 애니메이터 갱신 순서
     /// </summary>
     /// <param name="hasMoveInput">이동 입력이 있는지</param>
-    /// <param name="mode">수평 이동 처리 방식 (Free / Stop / Hold)</param>
+    /// <param name="mode">수평 이동 처리 방식 (Free / Stop / Hold / Brake / Push)</param>
     public void Tick(
         Vector3      inputDirection,
         bool         hasMoveInput,
@@ -135,6 +149,30 @@ public class YBotMovement : MonoBehaviour
                 0.0f,
                 landingDeceleration * Time.deltaTime
             );
+            return;
+        }
+
+        // 밀기: 물체 쪽으로 몸을 돌리고, 정렬된 뒤에 지정 속도로 이동
+        if (mode == YBotMoveMode.Push)
+        {
+            moveDirection = pushDirection;
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation,
+                Quaternion.LookRotation(pushDirection),
+                turnSpeed * Time.deltaTime
+            );
+
+            // 속도 0이 넘어오면(밀기 시작/멈춤 구간) 감속 없이 즉시 정지
+            if (pushSpeed <= 0.0f)
+            {
+                currentSpeed = 0.0f;
+                return;
+            }
+
+            bool aligned = Vector3.Angle(transform.forward, pushDirection) < 15.0f;
+            float pushTarget = aligned ? pushSpeed : 0.0f;
+            float pushRate = pushTarget > currentSpeed ? acceleration : deceleration;
+            currentSpeed = Mathf.MoveTowards(currentSpeed, pushTarget, pushRate * Time.deltaTime);
             return;
         }
 
