@@ -117,9 +117,27 @@ public class YBotJump : MonoBehaviour
     private JumpPhase phase = JumpPhase.None;
     private float phaseTimer;
     private JumpVariant active;   // 현재(또는 마지막으로) 실행한 점프 종류
+    private bool pendingBoolClear; // 외부 상태로 넘어간 뒤 Animator가 점프 상태를 벗어나면 Bool을 내릴 예정
 
     /// <summary>점프 중(윈드업/공중/착지)이면 true. 앉기를 막는 데 사용</summary>
     public bool IsActive => phase != JumpPhase.None;
+
+    /// <summary>이륙 후 착지 전(공중)이면 true. 점프 중 벽을 잡을 수 있는지 판단하는 데 사용</summary>
+    public bool IsAirborne => phase == JumpPhase.Air;
+
+    /// <summary>
+    /// 점프를 중단하고 다른 상태(벽 매달리기)에 넘김
+    /// 점프 Bool은 바로 내리지 않고, Animator가 점프 상태를 벗어난 뒤에 내림
+    /// (바로 내리면 Jump -> Locomotion 전이가 매달리기 전이보다 먼저 발동하거나, 나중에 점프가 다시 재생될 수 있음)
+    /// </summary>
+    public void AbortForExternalState()
+    {
+        if (phase == JumpPhase.None || active == null)
+            return;
+
+        phase = JumpPhase.None;
+        pendingBoolClear = true;
+    }
 
     /// <summary>
     /// 점프 중에는 해당 점프 클립 기준 중력, 아니면 제자리 점프 기준 중력 (음수)
@@ -176,7 +194,9 @@ public class YBotJump : MonoBehaviour
         switch (phase)
         {
             case JumpPhase.None:
-                if (startRequested)
+                if (pendingBoolClear)
+                    ClearAbortedBool();
+                else if (startRequested)
                     StartJump();
                 break;
 
@@ -245,6 +265,24 @@ public class YBotJump : MonoBehaviour
 
         if (IsInJumpState())
             animator.CrossFadeInFixedTime(LocomotionHash, active.landingBlendTime, 0);
+    }
+
+    /// <summary>
+    /// 중단한 점프의 Bool을 Animator가 점프 상태를 벗어난 뒤에 내림
+    /// </summary>
+    private void ClearAbortedBool()
+    {
+        if (animator == null)
+        {
+            pendingBoolClear = false;
+            return;
+        }
+
+        if (IsInJumpState())
+            return;
+
+        animator.SetBool(active.parameterHash, false);
+        pendingBoolClear = false;
     }
 
     private bool HasReachedLandingEnd()

@@ -2920,6 +2920,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2e779895e7295473a8da9bf623fedc9a, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1129228071}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 2e779895e7295473a8da9bf623fedc9a, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1129228072}
   m_SourcePrefab: {fileID: 100100000, guid: 2e779895e7295473a8da9bf623fedc9a, type: 3}
 --- !u!1 &832575517
 GameObject:
@@ -3118,6 +3121,11 @@ MonoBehaviour:
   locomotionStateName: Locomotion
   phaseTimeout: 4
   fallbackBlendTime: 0.2
+  pushStartStateName: Push Start
+  pushStopStateName: Push Stop
+  stuckNormalizedTime: 0.98
+  stopTransitionGrace: 0.5
+  stuckBlendTime: 0.15
   pushableLayers:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -3131,6 +3139,52 @@ MonoBehaviour:
   lostTargetGrace: 0.15
   lightPushSpeed: 1.6
   heavyPushSpeed: 0.7
+--- !u!114 &1129228072
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1129228062}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16de418aec45b4e68b8528d2904a8e4d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::YBotClimb
+  hangingParameterName: Hanging
+  ledgeGrabParameterName: LedgeGrab
+  climbingParameterName: Climbing
+  climbSpeedParameterName: ClimbSpeed
+  jumpToHangStateName: Jump To Hang
+  hangIdleStateName: Hanging Idle
+  climbStateName: Climbing Up Wall
+  locomotionStateName: Locomotion
+  syncGrace: 0.3
+  stuckNormalizedTime: 0.98
+  stateBlendTime: 0.12
+  releaseTimeout: 4
+  obstacleLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  contactDistance: 0.3
+  castRadius: 0.22
+  startAlignment: 0.7
+  topProbeInset: 0.15
+  landingCheckGap: 0.05
+  ledgeReachMin: 1.3
+  ledgeReachMax: 2.4
+  allowWallCling: 1
+  ledgeGrabDuration: 0.85
+  clingGrabDuration: 0.2
+  hangHeight: 1.35
+  hangWallGap: 0.05
+  climbSpeed: 0.8
+  hangMoveSpeed: 1.2
+  hangInputThreshold: 0.7
+  mantleDuration: 1
+  mantleRiseRatio: 0.6
+  mantleForwardDistance: 0.65
+  faceWallSpeed: 720
 --- !u!1 &1338289586
 GameObject:
   m_ObjectHideFlags: 0

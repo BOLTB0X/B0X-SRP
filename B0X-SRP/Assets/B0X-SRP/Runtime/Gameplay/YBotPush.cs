@@ -35,6 +35,19 @@ public class YBotPush : MonoBehaviour
     [Tooltip("안전 시간이 지나 강제로 Locomotion으로 되돌릴 때의 블렌딩 시간")]
     [SerializeField] private float fallbackBlendTime = 0.2f;
 
+    [Header("Animator 전이 안전장치")]
+    [Tooltip("시작 모션 상태 이름. 비워두면 이 안전장치를 쓰지 않음")]
+    [SerializeField] private string pushStartStateName = "Push Start";
+    [Tooltip("멈춤 모션 상태 이름. 비워두면 이 안전장치를 쓰지 않음")]
+    [SerializeField] private string pushStopStateName = "Push Stop";
+    [Tooltip("시작/멈춤 모션이 이 정규화 시간까지 재생됐는데 컨트롤러 전이가 일어나지 않았으면 코드가 직접 다음 상태로 넘김")]
+    [Range(0.5f, 1.0f)]
+    [SerializeField] private float stuckNormalizedTime = 0.98f;
+    [Tooltip("Push = false인데 Pushing 상태에서 이 시간 넘게 나가지 못하면 코드가 직접 멈춤 상태로 넘김")]
+    [SerializeField] private float stopTransitionGrace = 0.5f;
+    [Tooltip("안전장치가 직접 상태를 넘길 때의 블렌딩 시간")]
+    [SerializeField] private float stuckBlendTime = 0.15f;
+
     [Header("Detection")]
     [Tooltip("감지 대상 레이어")]
     [SerializeField] private LayerMask pushableLayers = ~0;
@@ -68,6 +81,10 @@ public class YBotPush : MonoBehaviour
     private int pushParameterHash;
     private int pushingStateHash;
     private int locomotionStateHash;
+    private int pushStartStateHash;
+    private int pushStopStateHash;
+    private bool hasStartState;
+    private bool hasStopState;
 
     private Animator animator;
     private CharacterController characterController;
@@ -110,6 +127,11 @@ public class YBotPush : MonoBehaviour
         pushingStateHash = Animator.StringToHash(pushingStateName);
         locomotionStateHash = Animator.StringToHash(locomotionStateName);
 
+        pushStartStateHash = Animator.StringToHash(pushStartStateName);
+        pushStopStateHash = Animator.StringToHash(pushStopStateName);
+        hasStartState = HasOptionalState(pushStartStateName, pushStartStateHash);
+        hasStopState = HasOptionalState(pushStopStateName, pushStopStateHash);
+
         YBotAnimatorUtility.ValidateParameter(animator, pushParameterName, AnimatorControllerParameterType.Bool, this);
         YBotAnimatorUtility.ValidateState(animator, pushingStateName, this);
         YBotAnimatorUtility.ValidateState(animator, locomotionStateName, this);
@@ -146,6 +168,8 @@ public class YBotPush : MonoBehaviour
                     BeginStop();
                 else if (IsEnteringOrIn(pushingStateHash) || timer <= 0.0f)
                     phase = PushPhase.Pushing;
+                else
+                    RescueIfStuck(pushStartStateHash, hasStartState, pushingStateHash);
                 break;
 
             case PushPhase.Pushing:
@@ -165,6 +189,10 @@ public class YBotPush : MonoBehaviour
                     if (animator != null)
                         animator.CrossFadeInFixedTime(locomotionStateHash, fallbackBlendTime, 0);
                     phase = PushPhase.None;
+                }
+                else
+                {
+                    RescueStop();
                 }
                 break;
         }
@@ -205,6 +233,58 @@ public class YBotPush : MonoBehaviour
 
         if (animator != null)
             animator.SetBool(pushParameterHash, false);
+    }
+
+    /// <summary>
+    /// 선택 상태가 컨트롤러에 있는지 확인. 이름을 지정했는데 없으면 경고하고 해당 안전장치를 끔
+    /// </summary>
+    private bool HasOptionalState(string stateName, int stateHash)
+    {
+        if (string.IsNullOrEmpty(stateName) || !YBotAnimatorUtility.IsReady(animator))
+            return false;
+
+        if (animator.HasState(0, stateHash))
+            return true;
+
+        Debug.LogWarning("Animator에 '" + stateName + "' 상태가 없어 이 상태의 전이 안전장치를 쓰지 않습니다.", this);
+        return false;
+    }
+
+    /// <summary>
+    /// 시작/멈춤 모션이 거의 끝까지 재생됐는데도 컨트롤러 전이가 일어나지 않으면 다음 상태로 직접 넘김
+    /// (조건이 없는 전이는 Has Exit Time이 꺼져 있으면 절대 발동하지 않으므로, 그런 설정 실수에서도 갇히지 않게 함)
+    /// </summary>
+    private void RescueIfStuck(int stateHash, bool hasState, int nextStateHash)
+    {
+        if (animator == null || !hasState || animator.IsInTransition(0))
+            return;
+
+        AnimatorStateInfo info = animator.GetCurrentAnimatorStateInfo(0);
+        if (info.shortNameHash != stateHash || info.normalizedTime < stuckNormalizedTime)
+            return;
+
+        animator.CrossFadeInFixedTime(nextStateHash, stuckBlendTime, 0);
+    }
+
+    /// <summary>
+    /// 멈춤 구간의 안전장치
+    /// 1) Push = false인데 Pushing에서 나가지 못하면 멈춤 모션(없으면 Locomotion)으로 직접 넘김
+    /// 2) 멈춤 모션이 끝났는데 Locomotion으로 전이되지 않으면 Locomotion으로 직접 넘김
+    /// </summary>
+    private void RescueStop()
+    {
+        if (animator == null)
+            return;
+
+        bool elapsedGrace = phaseTimeout - timer > stopTransitionGrace;
+        if (elapsedGrace && IsFullyIn(pushingStateHash))
+        {
+            int next = hasStopState ? pushStopStateHash : locomotionStateHash;
+            animator.CrossFadeInFixedTime(next, stuckBlendTime, 0);
+            return;
+        }
+
+        RescueIfStuck(pushStopStateHash, hasStopState, locomotionStateHash);
     }
 
     /// <summary>
@@ -284,17 +364,30 @@ public class YBotPush : MonoBehaviour
         if (Mathf.Abs(hit.normal.y) > 0.5f)
             return false;
 
+        if (!CanPush(hit.collider))
+            return false;
+
         body = hit.collider.attachedRigidbody;
+        return true;
+    }
+
+    /// <summary>
+    /// 이 콜라이더가 밀 수 있는 물체인지 (Rigidbody가 있고, 캐릭터보다 크지 않고, 너무 무겁지 않음)
+    /// 밀기 감지와 등반 감지가 같은 기준을 쓰도록 공개 (밀 수 있는 물체는 오르지 않고 밀고, 나머지는 오름)
+    /// </summary>
+    public bool CanPush(Collider collider)
+    {
+        if (collider == null || characterController == null)
+            return false;
+
+        Rigidbody body = collider.attachedRigidbody;
         if (body == null || body.isKinematic)
             return false;
 
-        // 크기/무게 조건: 캐릭터보다 크거나 너무 무거우면 밀 수 없음
         if (body.mass > maxPushMass)
             return false;
-        if (hit.collider.bounds.size.y > characterController.height * maxHeightRatio + 0.01f)
-            return false;
 
-        return true;
+        return collider.bounds.size.y <= characterController.height * maxHeightRatio + 0.01f;
     }
 
     /// <summary>

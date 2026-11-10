@@ -98,6 +98,12 @@ public class YBotMovement : MonoBehaviour
         verticalVelocity = velocity;
     }
 
+    /// <summary>전용 등반 동작이 수평 이동을 인계할 때 이전 보행 속도를 제거</summary>
+    public void StopHorizontal()
+    {
+        currentSpeed = 0.0f;
+    }
+
     /// <summary>
     /// 밀기 방향과 속도를 지정 (Push 모드일 때 사용). 속도 0이면 제자리에서 방향만 맞춤
     /// </summary>

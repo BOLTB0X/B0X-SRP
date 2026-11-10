@@ -9,6 +9,7 @@ using UnityEngine;
 [RequireComponent(typeof(YBotJump))]
 [RequireComponent(typeof(YBotSit))]
 [RequireComponent(typeof(YBotPush))]
+[RequireComponent(typeof(YBotClimb))]
 public class YBotController : MonoBehaviour
 {
     [Header("Input")]
@@ -23,6 +24,7 @@ public class YBotController : MonoBehaviour
     private YBotJump jump;
     private YBotSit sit;
     private YBotPush push;
+    private YBotClimb climb;
     private ThirdPersonCamera thirdPersonCamera;
 
     private void Awake()
@@ -33,6 +35,7 @@ public class YBotController : MonoBehaviour
         jump = GetOrAdd<YBotJump>();
         sit = GetOrAdd<YBotSit>();
         push = GetOrAdd<YBotPush>();
+        climb = GetOrAdd<YBotClimb>();
 
         if (animator == null)
             animator = GetComponentInChildren<Animator>();
@@ -43,6 +46,7 @@ public class YBotController : MonoBehaviour
         jump.Initialize(animator, movement);
         sit.Initialize(animator);
         push.Initialize(animator, characterController);
+        climb.Initialize(characterController, animator, push);
     }
 
     /// <summary>
@@ -128,20 +132,30 @@ public class YBotController : MonoBehaviour
 
         // 기능 간 조율: 점프, 앉기, 밀기는 서로 막음
         // 밀기는 이동 입력 방향의 물체를 감지해 시작하므로 가장 먼저 갱신
-        push.Tick(grounded, inputDirection, hasMoveInput, jump.IsActive || sit.IsActive);
+        push.Tick(grounded, inputDirection, hasMoveInput, jump.IsActive || sit.IsActive || climb.IsActive);
+
+        // 등반은 점프로 공중에 떠 있을 때 앞의 벽을 감지해서 시작. 잡으면 점프는 중단하고 이동을 넘겨받음
+        bool climbOwnsMovement = climb.Tick(
+            inputDirection, hasMoveInput, jumpPressed,
+            sit.IsActive || push.IsActive, jump.IsAirborne);
+        if (climbOwnsMovement)
+            jump.AbortForExternalState();
 
         // 점프 종류(제자리/걷기/달리기)는 YBotJump가 시작 순간의 이동 상태로 고름
         // 앉기는 이동 중이면 멈출 때까지 대기
-        bool canStartJump = jumpPressed && grounded && !sit.IsActive && !push.IsActive;
+        bool canStartJump = jumpPressed && grounded && !sit.IsActive && !push.IsActive && !climb.IsActive;
         jump.Tick(grounded, canStartJump);
 
         // 앉기 시작을 막는 조건 (파라미터 이름은 jumpActive지만 '시작 차단' 의미로 사용)
-        sit.Tick(grounded, sitPressed, hasMoveInput, movement.IsIdle, jump.IsActive || push.IsActive);
+        sit.Tick(grounded, sitPressed, hasMoveInput, movement.IsIdle,
+            jump.IsActive || push.IsActive || climb.IsActive);
 
         // 수평 이동 방식: 점프 중이면 점프가 정하고 (제자리 = 정지, 이동 점프 = 속도 유지),
         // 앉는 중이면 정지. 정지 모드에서는 속도가 감속되어 0으로 수렴
         YBotMoveMode moveMode = YBotMoveMode.Free;
-        if (jump.IsActive)
+        if (climbOwnsMovement)
+            moveMode = YBotMoveMode.Stop;
+        else if (jump.IsActive)
             moveMode = jump.HorizontalMode;
         else if (sit.IsActive)
             moveMode = YBotMoveMode.Stop;
@@ -151,14 +165,14 @@ public class YBotController : MonoBehaviour
             movement.SetPush(push.Direction, push.Speed);
         }
 
-        movement.Gravity = jump.Gravity;
-        movement.Tick(
-            inputDirection,
-            hasMoveInput,
-            isRunning,
-            grounded,
-            moveMode
-        );
+        movement.Gravity = climbOwnsMovement ? 0.0f : jump.Gravity;
+        if (climbOwnsMovement)
+        {
+            movement.StopHorizontal();
+            movement.Launch(0.0f);
+        }
+        else
+            movement.Tick(inputDirection, hasMoveInput, isRunning, grounded, moveMode);
     }
 
     /// <summary>
