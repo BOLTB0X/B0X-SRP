@@ -3104,6 +3104,7 @@ MonoBehaviour:
   groundedGravity: -2
   idleSpeedThreshold: 0.1
   positionOffset: 0.08
+  externalVelocityDamping: 3
 --- !u!114 &1129228071
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3151,13 +3152,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 16de418aec45b4e68b8528d2904a8e4d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::YBotClimb
-  hangingParameterName: Hanging
-  ledgeGrabParameterName: LedgeGrab
-  climbingParameterName: Climbing
-  climbSpeedParameterName: ClimbSpeed
-  jumpToHangStateName: Jump To Hang
-  hangIdleStateName: Hanging Idle
-  climbStateName: Climbing Up Wall
+  jumpToHangParameterName: Jump Hanging
+  jumpFromWallParameterName: Jump From Wall
+  climbingEndParameterName: Climbing End
+  hangingSpeedParameterName: Speed
+  climbPlaybackSpeedParameterName: ClimbSpeed
+  jumpToHangStateName: Jump To Freehang
+  hangingLocomotionStateName: Hanging Locomotion
+  jumpFromWallStateName: Jump From Wall
+  climbingEndStateName: Climbing End
+  fallingStateName: Falling
   locomotionStateName: Locomotion
   syncGrace: 0.3
   stuckNormalizedTime: 0.98
@@ -3178,12 +3182,19 @@ MonoBehaviour:
   clingGrabDuration: 0.2
   hangHeight: 1.35
   hangWallGap: 0.05
+  ledgeHandSpacing: 0.42
+  ledgeHandInset: 0.06
+  handLedgeReachTolerance: 0.12
+  hangingBlendDampTime: 0.08
   climbSpeed: 0.8
   hangMoveSpeed: 1.2
   hangInputThreshold: 0.7
+  maxClimbFeetBelowLedge: 0.8
   mantleDuration: 1
   mantleRiseRatio: 0.6
   mantleForwardDistance: 0.65
+  wallJumpOutwardSpeed: 2.5
+  wallJumpUpwardSpeed: 3.5
   faceWallSpeed: 720
 --- !u!1 &1338289586
 GameObject:

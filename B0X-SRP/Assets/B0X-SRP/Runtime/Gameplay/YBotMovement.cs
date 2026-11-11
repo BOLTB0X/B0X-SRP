@@ -39,6 +39,8 @@ public class YBotMovement : MonoBehaviour
     [Tooltip("이 속도 이하면 정지 상태로 취급 (점프/앉기 시작 조건)")]
     [SerializeField] private float idleSpeedThreshold = 0.1f;
     [SerializeField] private float positionOffset = 0.08f;
+    [Tooltip("벽 점프 등 외부 수평 도약 속도의 감쇠율")]
+    [SerializeField] private float externalVelocityDamping = 3.0f;
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
 
     private CharacterController characterController;
@@ -47,6 +49,7 @@ public class YBotMovement : MonoBehaviour
     private Vector3 moveDirection = Vector3.forward;
     private float currentSpeed;
     private float verticalVelocity;
+    private Vector3 externalHorizontalVelocity;
 
     // 밀기 중에 YBotController가 넘겨주는 방향/속도
     private Vector3 pushDirection = Vector3.forward;
@@ -98,6 +101,13 @@ public class YBotMovement : MonoBehaviour
         verticalVelocity = velocity;
     }
 
+    /// <summary>외부 상태(예: 벽에서 점프)가 지정한 수평/수직 초기 속도를 적용</summary>
+    public void Launch(Vector3 velocity)
+    {
+        externalHorizontalVelocity = new Vector3(velocity.x, 0.0f, velocity.z);
+        verticalVelocity = velocity.y;
+    }
+
     /// <summary>전용 등반 동작이 수평 이동을 인계할 때 이전 보행 속도를 제거</summary>
     public void StopHorizontal()
     {
@@ -130,7 +140,12 @@ public class YBotMovement : MonoBehaviour
 
         Vector3 velocity = moveDirection * currentSpeed;
         velocity.y = verticalVelocity;
+        velocity += externalHorizontalVelocity;
         characterController.Move(velocity * Time.deltaTime);
+        externalHorizontalVelocity = Vector3.MoveTowards(
+            externalHorizontalVelocity,
+            Vector3.zero,
+            externalVelocityDamping * Time.deltaTime);
 
         UpdateAnimator();
     }

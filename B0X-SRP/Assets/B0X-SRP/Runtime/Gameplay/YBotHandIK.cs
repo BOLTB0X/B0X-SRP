@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 밀기 중 양손을 물체 표면에 맞추는 Humanoid 손 IK
+/// 밀기 중 양손을 물체 표면에, 벽타기 중 양손을 벽/모서리에 맞추는 Humanoid 손 IK
 /// 클립에 구워진 손 위치는 물체 크기/거리와 무관하게 고정이라 어긋나므로,
 /// 손이 가야 할 표면 위치를 매 프레임 구해서 IK로 보정
 /// </summary>
@@ -31,6 +31,14 @@ public class YBotHandIK : MonoBehaviour
     [SerializeField] private Vector3 leftRotationOffset;
     [SerializeField] private Vector3 rightRotationOffset;
 
+    [Header("Wall Climb Feet")]
+    [Tooltip("매달리기/등반 중 발이 벽에서 떨어질 때 벽 표면에 붙이는 위치 IK")]
+    [SerializeField] private bool useWallFootIK = true;
+    [Tooltip("발 목표점을 벽 표면에서 캐릭터 쪽으로 띄우는 거리(m)")]
+    [SerializeField] private float footSurfaceOffset = 0.2f;
+    [Tooltip("애니메이션 발 위치에서 벽 IK 목표점까지 허용하는 최대 거리(m)")]
+    [SerializeField] private float footMaxReach = 0.65f;
+
     private class HandState
     {
         public float weight;
@@ -40,38 +48,41 @@ public class YBotHandIK : MonoBehaviour
 
     private readonly HandState left = new HandState();
     private readonly HandState right = new HandState();
+    private readonly HandState leftFoot = new HandState();
+    private readonly HandState rightFoot = new HandState();
 
     private Animator animator;
     private YBotPush push;
+    private YBotClimb climb;
 
     // 진단용: OnAnimatorIK가 호출되는지 확인 (레이어의 IK Pass가 꺼져 있으면 호출되지 않음)
     private int lastIkFrame = -1;
-    private float gripTime;
+    private float contactTime;
     private bool warnedIkPass;
 
     private void Awake()
     {
         animator = GetComponent<Animator>();
         push = GetComponentInParent<YBotPush>();
+        climb = GetComponentInParent<YBotClimb>();
     }
 
     private void Update()
     {
-        if (push == null)
-            return;
-
-        if (!push.IsGripping)
+        bool isPushing = push != null && push.IsGripping;
+        bool isClimbing = climb != null && climb.IsHandIKActive;
+        if (!isPushing && !isClimbing)
         {
-            gripTime = 0.0f;
+            contactTime = 0.0f;
             return;
         }
 
-        gripTime += Time.deltaTime;
-        if (!warnedIkPass && gripTime > 0.5f && Time.frameCount - lastIkFrame > 2)
+        contactTime += Time.deltaTime;
+        if (!warnedIkPass && contactTime > 0.5f && Time.frameCount - lastIkFrame > 2)
         {
             warnedIkPass = true;
             Debug.LogWarning(
-                "밀기 중인데 OnAnimatorIK가 호출되지 않습니다. Animator 창 Layers 탭에서 Base Layer 톱니바퀴의 'IK Pass'를 켜고, " +
+                "손 접촉 중인데 OnAnimatorIK가 호출되지 않습니다. Animator 창 Layers 탭에서 Base Layer 톱니바퀴의 'IK Pass'를 켜고, " +
                 "이 컴포넌트가 Animator가 붙은 오브젝트에 있는지 확인하세요.", this);
         }
     }
@@ -80,18 +91,21 @@ public class YBotHandIK : MonoBehaviour
     {
         lastIkFrame = Time.frameCount;
 
-        if (animator == null || push == null)
+        if (animator == null)
             return;
 
-        Collider surface = push.IsGripping ? push.TargetCollider : null;
+        Collider surface = push != null && push.IsGripping ? push.TargetCollider : null;
 
         UpdateHand(AvatarIKGoal.LeftHand, left, surface, leftRotationOffset);
         UpdateHand(AvatarIKGoal.RightHand, right, surface, rightRotationOffset);
+        UpdateFoot(AvatarIKGoal.LeftFoot, leftFoot);
+        UpdateFoot(AvatarIKGoal.RightFoot, rightFoot);
     }
 
     private void UpdateHand(AvatarIKGoal goal, HandState hand, Collider surface, Vector3 rotationOffset)
     {
         float desiredWeight = 0.0f;
+        bool isLedgeContact = false;
 
         if (surface != null)
         {
@@ -124,6 +138,26 @@ public class YBotHandIK : MonoBehaviour
                 }
             }
         }
+        else if (climb != null && climb.IsHandIKActive)
+        {
+            Vector3 handPosition = animator.GetIKPosition(goal);
+            if (climb.TryGetHandIKTarget(
+                    goal,
+                    handPosition,
+                    handSurfaceOffset,
+                    out Vector3 target,
+                    out Quaternion targetHandRotation,
+                    out isLedgeContact) &&
+                Vector3.Distance(handPosition, target) <= maxReach)
+            {
+                hand.position = target;
+                hand.rotation = targetHandRotation * Quaternion.Euler(rotationOffset);
+                desiredWeight = 1.0f;
+            }
+        }
+
+        if (climb != null)
+            climb.SetHandLedgeContact(goal, desiredWeight > 0.0f && isLedgeContact);
 
         hand.weight = Mathf.MoveTowards(hand.weight, desiredWeight, blendSpeed * Time.deltaTime);
         if (hand.weight <= 0.0f)
@@ -137,6 +171,32 @@ public class YBotHandIK : MonoBehaviour
             animator.SetIKRotationWeight(goal, hand.weight * rotationWeight);
             animator.SetIKRotation(goal, hand.rotation);
         }
+    }
+
+    private void UpdateFoot(AvatarIKGoal goal, HandState foot)
+    {
+        float desiredWeight = 0.0f;
+        if (useWallFootIK && climb != null && climb.IsHandIKActive)
+        {
+            Vector3 footPosition = animator.GetIKPosition(goal);
+            if (climb.TryGetFootIKTarget(
+                    footPosition,
+                    footSurfaceOffset,
+                    out Vector3 target,
+                    out _) &&
+                Vector3.Distance(footPosition, target) <= footMaxReach)
+            {
+                foot.position = target;
+                desiredWeight = 1.0f;
+            }
+        }
+
+        foot.weight = Mathf.MoveTowards(foot.weight, desiredWeight, blendSpeed * Time.deltaTime);
+        animator.SetIKPositionWeight(goal, foot.weight);
+        if (foot.weight <= 0.0f)
+            return;
+
+        animator.SetIKPosition(goal, foot.position);
     }
 
     /// <summary>

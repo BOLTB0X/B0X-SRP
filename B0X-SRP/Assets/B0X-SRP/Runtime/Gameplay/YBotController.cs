@@ -46,7 +46,7 @@ public class YBotController : MonoBehaviour
         jump.Initialize(animator, movement);
         sit.Initialize(animator);
         push.Initialize(animator, characterController);
-        climb.Initialize(characterController, animator, push);
+        climb.Initialize(characterController, animator, push, movement);
     }
 
     /// <summary>
@@ -153,7 +153,7 @@ public class YBotController : MonoBehaviour
         // 수평 이동 방식: 점프 중이면 점프가 정하고 (제자리 = 정지, 이동 점프 = 속도 유지),
         // 앉는 중이면 정지. 정지 모드에서는 속도가 감속되어 0으로 수렴
         YBotMoveMode moveMode = YBotMoveMode.Free;
-        if (climbOwnsMovement)
+        if (climb.IsActive)
             moveMode = YBotMoveMode.Stop;
         else if (jump.IsActive)
             moveMode = jump.HorizontalMode;
@@ -165,7 +165,10 @@ public class YBotController : MonoBehaviour
             movement.SetPush(push.Direction, push.Speed);
         }
 
-        movement.Gravity = climbOwnsMovement ? 0.0f : jump.Gravity;
+        // 벽에서 점프해 공중에 있는 동안에는 벽 점프 클립 기준 중력을 사용
+        movement.Gravity = climbOwnsMovement
+            ? 0.0f
+            : climb.OverridesGravity ? climb.Gravity : jump.Gravity;
         if (climbOwnsMovement)
         {
             movement.StopHorizontal();
