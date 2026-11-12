@@ -3161,7 +3161,6 @@ MonoBehaviour:
   hangingLocomotionStateName: Hanging Locomotion
   jumpFromWallStateName: Jump From Wall
   climbingEndStateName: Climbing End
-  fallingStateName: Falling
   locomotionStateName: Locomotion
   syncGrace: 0.3
   stuckNormalizedTime: 0.98
@@ -3191,10 +3190,17 @@ MonoBehaviour:
   hangInputThreshold: 0.7
   maxClimbFeetBelowLedge: 0.8
   mantleDuration: 1
-  mantleRiseRatio: 0.6
-  mantleForwardDistance: 0.65
+  mantleRiseRatio: 0.7
+  mantleForwardDistance: 0.75
+  mantleHandTargetDistance: 0.5
+  mantleStartNormalizedTime: 0.4
+  mantleFollowsClip: 1
+  mantleEndNormalizedTime: 0.45
   wallJumpOutwardSpeed: 2.5
-  wallJumpUpwardSpeed: 3.5
+  wallJumpHeight: 0.8
+  wallJumpAirTime: 0.8
+  wallJumpTakeoffNormalizedTime: 0.4
+  wallJumpTimeout: 1
   faceWallSpeed: 720
 --- !u!1 &1338289586
 GameObject:

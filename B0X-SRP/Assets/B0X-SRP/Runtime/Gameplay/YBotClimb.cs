@@ -111,6 +111,11 @@ public class YBotClimb : MonoBehaviour
     [SerializeField] private float mantleRiseRatio = 0.6f;
     [Tooltip("모서리에서 안쪽으로 올라서는 거리(m)")]
     [SerializeField] private float mantleForwardDistance = 0.65f;
+    [Tooltip("Climbing End 시작에 필요한 애니메이션 손 위치와 모서리 IK 목표점 사이의 최대 거리(m)")]
+    [SerializeField] private float mantleHandTargetDistance = 0.8f;
+    [Tooltip("Climbing End 클립의 시작 위치. 0.2는 0~115프레임 클립의 약 23프레임")]
+    [Range(0.0f, 1.0f)]
+    [SerializeField] private float mantleStartNormalizedTime = 0.2f;
     [Tooltip("true면 올라서기 이동을 Climbing End 모션의 진행도에 맞춤 (모션 길이와 자동으로 맞음). false면 mantleDuration 시간 기준")]
     [SerializeField] private bool mantleFollowsClip = true;
     [Tooltip("Climbing End 모션이 이 정규화 시간에 도달하면 올라서기 이동이 끝남")]
@@ -160,9 +165,12 @@ public class YBotClimb : MonoBehaviour
     private bool isLedgeHang;       // 모서리를 잡고 진입했는지
     private bool leftHandAtLedge;
     private bool rightHandAtLedge;
-    private bool hadLedgeHandContact;
+    private float leftHandLedgeDistance = float.PositiveInfinity;
+    private float rightHandLedgeDistance = float.PositiveInfinity;
+    private bool warnedMantleBlocked;
     private bool releaseWithJumpFromWall;
     private bool releaseWithClimbingEnd;
+    private bool climbingEndStarted;
     private float syncTimer;
     private float releaseTimer;
     private float wallJumpAirTimer;
@@ -252,9 +260,9 @@ public class YBotClimb : MonoBehaviour
         if (isLedgeHang || animatedHandPosition.y >= ledgeTopY - handLedgeReachTolerance)
         {
             float side = goal == AvatarIKGoal.LeftHand ? -0.5f : 0.5f;
-            Vector3 ledgePoint = isLedgeHang
-                ? wallPoint - wallNormal * ledgeHandInset + transform.right * (ledgeHandSpacing * side)
-                : animatedHandPosition - wallNormal * ledgeHandInset;
+            // 벽을 타다 모서리 높이에 닿은 경우에도 애니메이션 손 위치(벽 앞쪽일 수 있음)가 아니라
+            // 벽 기준 지점에서 안쪽으로 넣은 점으로 윗면을 찾아야 광선이 윗면에 닿음
+            Vector3 ledgePoint = wallPoint - wallNormal * ledgeHandInset + transform.right * (ledgeHandSpacing * side);
             ledgePoint.y = ledgeTopY;
 
             Vector3 rayOrigin = ledgePoint + Vector3.up * 0.35f;
@@ -298,13 +306,19 @@ public class YBotClimb : MonoBehaviour
         return true;
     }
 
-    /// <summary>IK가 벽 윗면에 양손을 고정했는지 저장해 다음 Update에서 올라서기를 판정한다.</summary>
-    public void SetHandLedgeContact(AvatarIKGoal goal, bool atLedge)
+    /// <summary>IK 접촉 여부와 애니메이션 손 위치에서 모서리 목표점까지의 거리를 저장한다.</summary>
+    public void SetHandLedgeContact(AvatarIKGoal goal, bool atLedge, float distanceToLedgeTarget)
     {
         if (goal == AvatarIKGoal.LeftHand)
+        {
             leftHandAtLedge = atLedge;
+            leftHandLedgeDistance = atLedge ? distanceToLedgeTarget : float.PositiveInfinity;
+        }
         else if (goal == AvatarIKGoal.RightHand)
+        {
             rightHandAtLedge = atLedge;
+            rightHandLedgeDistance = atLedge ? distanceToLedgeTarget : float.PositiveInfinity;
+        }
     }
 
     private void OnDisable()
@@ -387,7 +401,9 @@ public class YBotClimb : MonoBehaviour
         isLedgeHang = ledge;
         leftHandAtLedge = false;
         rightHandAtLedge = false;
-        hadLedgeHandContact = false;
+        leftHandLedgeDistance = float.PositiveInfinity;
+        rightHandLedgeDistance = float.PositiveInfinity;
+        warnedMantleBlocked = false;
 
         BeginGrab();
         return true;
@@ -489,8 +505,17 @@ public class YBotClimb : MonoBehaviour
             RescueEntry();
         else if (phase == ClimbPhase.Mantling)
         {
-            if (animator != null && !IsInOrEntering(climbingEndStateHash) && traversalTime >= syncGrace)
-                animator.CrossFadeInFixedTime(climbingEndStateHash, stateBlendTime, 0);
+            if (animator != null)
+            {
+                if (IsInOrEntering(climbingEndStateHash))
+                    climbingEndStarted = true;
+                else if (traversalTime >= syncGrace)
+                {
+                    animator.CrossFadeInFixedTime(
+                        climbingEndStateHash, stateBlendTime, 0, 0.0f, mantleStartNormalizedTime);
+                    climbingEndStarted = true;
+                }
+            }
         }
 
         // 모션 진행도 기준이면 모션이 시작되지 않는 경우를 대비해 안전 시간(mantleDuration의 3배)으로 끝냄
@@ -557,20 +582,21 @@ public class YBotClimb : MonoBehaviour
         float feetClearance = Mathf.Min(maxClimbFeetBelowLedge, controller.radius + landingCheckGap);
         float topLimitFeetY = ledgeTopY - feetClearance;
 
-        bool handsLostLedgeContact = HandsLostLedgeContact();
+        // 손 IK가 실제로 큐브 윗면에 닿았는지 확인한다.
+        bool handsAtLedge = HandsReachedLedge();
 
         float blendSpeed = 0.0f;
         float climbDirection = 1.0f;
 
         if (vertical >= hangInputThreshold)
         {
-            if (handsLostLedgeContact)
+            if (handsAtLedge)
             {
-                // 양손이 모서리 접촉을 잃으면 올라설 자리가 있는지 확인
+                // 손이 실제로 모서리에 닿았을 때만 올라선다.
                 if (TryBeginMantle())
                     return;
             }
-            else
+            else if (position.y < topLimitFeetY)
             {
                 position.y = Mathf.Min(position.y + climbSpeed * Time.deltaTime, topLimitFeetY);
                 transform.position = position;
@@ -638,13 +664,22 @@ public class YBotClimb : MonoBehaviour
 
     private bool TryBeginMantle()
     {
-        Vector3 landing = GetLandingPosition();
-        if (!HasLandingSpace(landing))
+        if (!TryFindLanding(out Vector3 landing))
+        {
+            if (!warnedMantleBlocked)
+            {
+                warnedMantleBlocked = true;
+                Debug.LogWarning(
+                    "손은 모서리에 닿았지만 올라설 자리가 없어 올라서지 못했습니다. " +
+                    "윗면에 다른 벽/물체가 가까운지, mantleForwardDistance가 큰지 확인하세요.", this);
+            }
             return false;
+        }
 
         Vector3 position = transform.position;
         Vector3 mid = new Vector3(position.x, ledgeTopY, position.z);
 
+        climbingEndStarted = false;
         BeginTraversal(ClimbPhase.Mantling, mantleDuration, mid, landing, mantleRiseRatio);
         SetAnimatorFlags(false, false, true);
         return true;
@@ -754,13 +789,21 @@ public class YBotClimb : MonoBehaviour
         }
         else if (releaseWithClimbingEnd)
         {
-            if (!IsInOrEntering(climbingEndStateHash) && releaseTimer >= syncGrace)
-                animator.CrossFadeInFixedTime(climbingEndStateHash, stateBlendTime, 0);
-            else if (IsInOrEntering(climbingEndStateHash))
-                animator.SetBool(climbingEndHash, false);   // 다시 트리거되지 않게 내림. 복귀는 Exit Time 전이가 맡음
+            if (IsInOrEntering(climbingEndStateHash))
+            {
+                climbingEndStarted = true;
+                animator.SetBool(climbingEndHash, false);   // 재진입을 막고 Exit Time 전이가 복귀하도록 함
+            }
+            else if (!climbingEndStarted && releaseTimer >= syncGrace)
+            {
+                animator.CrossFadeInFixedTime(
+                    climbingEndStateHash, stateBlendTime, 0, 0.0f, mantleStartNormalizedTime);
+                climbingEndStarted = true;
+            }
         }
 
-        if (IsFullyIn(locomotionStateHash))
+        if (IsFullyIn(locomotionStateHash) &&
+            (!releaseWithClimbingEnd || climbingEndStarted))
         {
             SetAnimatorFlags(false, false, false);
             phase = ClimbPhase.None;
@@ -924,7 +967,8 @@ public class YBotClimb : MonoBehaviour
         if (normalized < 0.0f)
             return 0.0f;
 
-        return Mathf.Clamp01(normalized / Mathf.Max(0.01f, mantleEndNormalizedTime));
+        float progressRange = Mathf.Max(0.01f, mantleEndNormalizedTime - mantleStartNormalizedTime);
+        return Mathf.Clamp01((normalized - mantleStartNormalizedTime) / progressRange);
     }
 
     /// <summary>해당 상태(또는 그 상태로 들어가는 중)의 정규화 시간. 해당 상태가 아니면 -1</summary>
@@ -944,14 +988,31 @@ public class YBotClimb : MonoBehaviour
         return -1.0f;
     }
 
-    /// <summary>손 IK가 모서리에 닿은 적이 있고, 현재 양손 모두 접촉하지 않는지 확인한다.</summary>
-    private bool HandsLostLedgeContact()
+    /// <summary>손 IK가 실제로 모서리 윗면에 닿았는지 확인한다.</summary>
+    private bool HandsReachedLedge()
     {
-        bool hasHandContact = leftHandAtLedge || rightHandAtLedge;
-        if (hasHandContact)
-            hadLedgeHandContact = true;
+        return (leftHandAtLedge && leftHandLedgeDistance <= mantleHandTargetDistance) ||
+            (rightHandAtLedge && rightHandLedgeDistance <= mantleHandTargetDistance);
+    }
 
-        return hadLedgeHandContact && !hasHandContact;
+    /// <summary>
+    /// 올라설 자리를 찾음. 윗면에 다른 벽이 가까우면 기본 거리에서는 캡슐이 걸리므로 거리를 줄여가며 탐색
+    /// </summary>
+    private bool TryFindLanding(out Vector3 landing)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            float distance = mantleForwardDistance * (1.0f - i * 0.25f);
+
+            landing = wallPoint - wallNormal * distance;
+            landing.y = ledgeTopY;
+
+            if (HasLandingSpace(landing))
+                return true;
+        }
+
+        landing = Vector3.zero;
+        return false;
     }
 
     private bool IsInOrEntering(int stateHash)

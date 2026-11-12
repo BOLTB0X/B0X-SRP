@@ -106,6 +106,7 @@ public class YBotHandIK : MonoBehaviour
     {
         float desiredWeight = 0.0f;
         bool isLedgeContact = false;
+        float ledgeDistance = float.PositiveInfinity;
 
         if (surface != null)
         {
@@ -147,17 +148,23 @@ public class YBotHandIK : MonoBehaviour
                     handSurfaceOffset,
                     out Vector3 target,
                     out Quaternion targetHandRotation,
-                    out isLedgeContact) &&
-                Vector3.Distance(handPosition, target) <= maxReach)
+                    out isLedgeContact))
             {
-                hand.position = target;
-                hand.rotation = targetHandRotation * Quaternion.Euler(rotationOffset);
-                desiredWeight = 1.0f;
+                float distanceToTarget = Vector3.Distance(handPosition, target);
+                if (isLedgeContact)
+                    ledgeDistance = distanceToTarget;
+
+                if (distanceToTarget <= maxReach)
+                {
+                    hand.position = target;
+                    hand.rotation = targetHandRotation * Quaternion.Euler(rotationOffset);
+                    desiredWeight = 1.0f;
+                }
             }
         }
 
         if (climb != null)
-            climb.SetHandLedgeContact(goal, desiredWeight > 0.0f && isLedgeContact);
+            climb.SetHandLedgeContact(goal, desiredWeight > 0.0f && isLedgeContact, ledgeDistance);
 
         hand.weight = Mathf.MoveTowards(hand.weight, desiredWeight, blendSpeed * Time.deltaTime);
         if (hand.weight <= 0.0f)
